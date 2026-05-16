@@ -273,6 +273,25 @@ function drawBattle(
     ctx.lineWidth = 1;
   }
 
+  // Препятствия. Рисуем под стэками, чтобы фигурки были поверх.
+  for (const obs of battle.obstacles) {
+    const px = 20 + obs.pos.x * HEX_W;
+    const py = 20 + obs.pos.y * HEX_H;
+    const cx = px + HEX_W / 2;
+    const cy = py + HEX_H / 2;
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 12, 18, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.font = "28px serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff";
+    ctx.fillText(obs.icon, cx, cy);
+  }
+
   // Стэки.
   for (const s of battle.stacks) {
     if (s.count <= 0) continue;

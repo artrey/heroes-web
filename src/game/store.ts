@@ -978,7 +978,7 @@ export const useGame = create<GameState & Actions>()(
       name: "heroes-web-save",
       // Игра в активной разработке — поднимаем version при любом изменении формата.
       // Несовместимые сейвы сбрасываются на initialState (главное меню) без миграции.
-      version: 5,
+      version: 6,
     },
   ),
 );

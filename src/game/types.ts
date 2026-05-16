@@ -193,6 +193,11 @@ export interface BattleStack {
   shots: number;
 }
 
+export interface BattleObstacle {
+  pos: Coord;
+  icon: string;
+}
+
 export interface BattleState {
   attackerHeroId: string;
   defenderHeroId: string | null; // null = нейтральные
@@ -201,6 +206,7 @@ export interface BattleState {
   attackerBonus: HeroBonus;
   defenderBonus: HeroBonus;
   xpReward: number; // опыт атакеру за победу
+  obstacles: BattleObstacle[]; // случайные препятствия на поле — клетки заблокированы
   stacks: BattleStack[];
   turnOrder: string[]; // id stacks по инициативе
   activeStackIdx: number;

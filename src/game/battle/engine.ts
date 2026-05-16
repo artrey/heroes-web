@@ -1,6 +1,6 @@
 import { EMPTY_BONUS } from "../data/artifacts";
 import { getUnit, UNITS } from "../data/units";
-import type { BattleStack, BattleState, Coord, Hero, HeroBonus, UnitStack } from "../types";
+import type { BattleObstacle, BattleStack, BattleState, Coord, Hero, HeroBonus, UnitStack } from "../types";
 import { getHeroBonus } from "../utils/heroBonus";
 import { makeId } from "../utils/id";
 
@@ -64,6 +64,7 @@ export function startBattle(args: StartArgs): BattleState {
   const turnOrder = computeTurnOrder(stacks, { attackerBonus, defenderBonus });
   // XP за бой = суммарный HP всех вражеских юнитов.
   const xpReward = defArmy.reduce((acc, u) => acc + (UNITS[u.unitId]?.hp ?? 0) * u.count, 0);
+  const obstacles = generateObstacles(stacks);
   return {
     attackerHeroId: args.attackerHero.id,
     defenderHeroId: args.defenderHero?.id ?? null,
@@ -72,6 +73,7 @@ export function startBattle(args: StartArgs): BattleState {
     attackerBonus,
     defenderBonus,
     xpReward,
+    obstacles,
     stacks,
     turnOrder,
     activeStackIdx: 0,
@@ -79,6 +81,27 @@ export function startBattle(args: StartArgs): BattleState {
     winner: null,
     log: [battleLine(1, "Бой начался!")],
   };
+}
+
+const OBSTACLE_ICONS = ["🪨", "🌵", "🪵", "🌳", "🍄"];
+
+// Случайные препятствия в средней зоне поля: x=2..12, y=0..10. Не накладываются
+// на стартовые позиции стэков. 4–8 штук на бой.
+function generateObstacles(stacks: BattleStack[]): BattleObstacle[] {
+  const occupied = new Set(stacks.map(s => `${s.pos.x},${s.pos.y}`));
+  const out: BattleObstacle[] = [];
+  const count = 4 + Math.floor(Math.random() * 5);
+  let safety = 0;
+  while (out.length < count && safety < 100) {
+    safety++;
+    const x = 2 + Math.floor(Math.random() * (BATTLE_W - 4));
+    const y = Math.floor(Math.random() * BATTLE_H);
+    const k = `${x},${y}`;
+    if (occupied.has(k)) continue;
+    occupied.add(k);
+    out.push({ pos: { x, y }, icon: OBSTACLE_ICONS[Math.floor(Math.random() * OBSTACLE_ICONS.length)] });
+  }
+  return out;
 }
 
 function pad2(n: number): string {
@@ -171,6 +194,8 @@ export function reachable(b: BattleState, stack: BattleStack): Map<string, numbe
   const def = UNITS[stack.unitId];
   const speed = def.speed + bonusFor(b, stack.side).speed;
   const occupied = new Set(b.stacks.filter(s => s.count > 0 && s.id !== stack.id).map(s => key(s.pos)));
+  // Препятствия — тоже непроходимые клетки, для всех (включая летающих).
+  for (const o of b.obstacles) occupied.add(key(o.pos));
   const dist = new Map<string, number>();
   const startKey = key(stack.pos);
   dist.set(startKey, 0);
@@ -423,6 +448,7 @@ export function approachTiles(b: BattleState, attackerId: string, defenderId: st
   if (!attacker || !defender) return [];
   const reach = reachable(b, attacker);
   const occupied = new Set(b.stacks.filter(s => s.count > 0 && s.id !== attacker.id).map(s => key(s.pos)));
+  for (const o of b.obstacles) occupied.add(key(o.pos));
   const candidates: Coord[] = [];
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
