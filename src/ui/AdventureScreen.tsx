@@ -5,6 +5,7 @@ import { ARTIFACTS as ARTIFACTS_LOCAL } from "../game/data/artifacts";
 import { UNITS as UNITS_LOCAL } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
+import { dailyIncomeFor } from "../game/utils/income";
 import { findPath, isPassable, pathCost, STEP_STRAIGHT, stepCost } from "../game/utils/pathfind";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { computeVisibleTiles } from "../game/utils/visibility";
@@ -55,6 +56,11 @@ export function AdventureScreen() {
   const humanId = Object.values(players).find(p => p.isHuman)?.id ?? activePlayerId;
   const humanPlayer = players[humanId];
   const revealed = humanPlayer?.revealed ?? {};
+  const income = useMemo(
+    () => (activePlayer ? dailyIncomeFor(useGame.getState(), activePlayer.id) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activePlayer, towns, players],
+  );
   const visible = useMemo(
     () => computeVisibleTiles(useGame.getState(), humanId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,12 +241,16 @@ export function AdventureScreen() {
         <span style={{ color: activePlayer?.color }}>● {activePlayer?.name}</span>
         {activePlayer && !activePlayer.isHuman && <span style={{ color: "var(--accent)" }}>(ход ИИ…)</span>}
         <div className="res-bar">
-          {(Object.keys(activePlayer?.resources ?? {}) as Array<keyof ResourceBag>).map(k => (
-            <div className="res-item" key={k} title={RESOURCE_NAMES[k]}>
-              <span>{RESOURCE_ICONS[k]}</span>
-              <span>{activePlayer!.resources[k]}</span>
-            </div>
-          ))}
+          {(Object.keys(activePlayer?.resources ?? {}) as Array<keyof ResourceBag>).map(k => {
+            const inc = income?.[k] ?? 0;
+            return (
+              <div className="res-item" key={k} title={`${RESOURCE_NAMES[k]}${inc ? ` · +${inc}/день` : ""}`}>
+                <span>{RESOURCE_ICONS[k]}</span>
+                <span>{activePlayer!.resources[k]}</span>
+                {inc > 0 && <span style={{ color: "var(--good)", fontSize: 11, marginLeft: 2 }}>(+{inc})</span>}
+              </div>
+            );
+          })}
         </div>
         <button onClick={() => useGame.getState().goToMenu()}>Меню</button>
       </div>

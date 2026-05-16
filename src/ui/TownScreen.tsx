@@ -5,6 +5,7 @@ import { reverseRate } from "../game/data/marketRates";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { Resource, ResourceBag } from "../game/types";
+import { dailyIncomeFor } from "../game/utils/income";
 import { canAfford, RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 
 const HERO_HIRE_GOLD = 2500;
@@ -47,12 +48,16 @@ export function TownScreen() {
           {town.faction === "castle" ? "🏰" : "🏯"} {town.name}
         </span>
         <div className="res-bar">
-          {(Object.keys(player.resources) as Array<keyof ResourceBag>).map(k => (
-            <div className="res-item" key={k} title={RESOURCE_NAMES[k]}>
-              <span>{RESOURCE_ICONS[k]}</span>
-              <span>{player.resources[k]}</span>
-            </div>
-          ))}
+          {(Object.keys(player.resources) as Array<keyof ResourceBag>).map(k => {
+            const inc = dailyIncomeFor(useGame.getState(), player.id)[k];
+            return (
+              <div className="res-item" key={k} title={`${RESOURCE_NAMES[k]}${inc ? ` · +${inc}/день` : ""}`}>
+                <span>{RESOURCE_ICONS[k]}</span>
+                <span>{player.resources[k]}</span>
+                {inc > 0 && <span style={{ color: "var(--good)", fontSize: 11, marginLeft: 2 }}>(+{inc})</span>}
+              </div>
+            );
+          })}
         </div>
         <button onClick={closeTown}>← На карту</button>
       </div>
