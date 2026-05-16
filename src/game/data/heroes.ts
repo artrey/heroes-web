@@ -1,11 +1,17 @@
 import type { Faction } from "../types";
+import { FACTION_LIST } from "./factions";
 import { FACTION_UNIT_ORDER } from "./units";
 
-interface HeroProto {
+export interface HeroProto {
+  id: string;
   name: string;
   faction: Faction;
   icon: string;
   startingArmy: { unitId: string; min: number; max: number }[];
+}
+
+function makeId(faction: Faction, name: string): string {
+  return `${faction}:${name}`;
 }
 
 // Имена и иконки героев по фракциям — приближение к известным героям HoMM3.
@@ -13,6 +19,7 @@ interface HeroProto {
 function genericHeroes(faction: Faction, names: { name: string; icon: string }[]): HeroProto[] {
   const [t1, t2] = FACTION_UNIT_ORDER[faction];
   return names.map(n => ({
+    id: makeId(faction, n.name),
     name: n.name,
     faction,
     icon: n.icon,
@@ -24,8 +31,9 @@ function genericHeroes(faction: Faction, names: { name: string; icon: string }[]
 }
 
 export const HERO_PROTOS: HeroProto[] = [
-  // Castle и Rampart — тематические имена с лёгкими отличиями в стартовой армии.
+  // Castle — рыцари и клирики. Имена в духе HoMM3.
   {
+    id: "castle:Орин",
     name: "Орин",
     faction: "castle",
     icon: "🤴",
@@ -35,6 +43,7 @@ export const HERO_PROTOS: HeroProto[] = [
     ],
   },
   {
+    id: "castle:Валеска",
     name: "Валеска",
     faction: "castle",
     icon: "👸",
@@ -43,7 +52,16 @@ export const HERO_PROTOS: HeroProto[] = [
       { unitId: "archer", min: 5, max: 8 },
     ],
   },
+  ...genericHeroes("castle", [
+    { name: "Сорша", icon: "🤺" },
+    { name: "Эдрик", icon: "⚔️" },
+    { name: "Сильвия", icon: "🛡️" },
+    { name: "Кэтрин", icon: "🐎" },
+  ]),
+
+  // Rampart — эльфы и друиды.
   {
+    id: "rampart:Айвор",
     name: "Айвор",
     faction: "rampart",
     icon: "🧝‍♂️",
@@ -53,6 +71,7 @@ export const HERO_PROTOS: HeroProto[] = [
     ],
   },
   {
+    id: "rampart:Кларансей",
     name: "Кларансей",
     faction: "rampart",
     icon: "🧝‍♀️",
@@ -61,38 +80,95 @@ export const HERO_PROTOS: HeroProto[] = [
       { unitId: "woodElf", min: 1, max: 3 },
     ],
   },
-  // Остальные фракции — по одному герою. Можно добавить ещё позже.
+  ...genericHeroes("rampart", [
+    { name: "Меф", icon: "🦌" },
+    { name: "Уджолек", icon: "🌿" },
+    { name: "Айрис", icon: "🦋" },
+    { name: "Дриад", icon: "🍃" },
+  ]),
+
+  // Tower — маги.
   ...genericHeroes("tower", [
     { name: "Солмир", icon: "🧙" },
     { name: "Айя", icon: "🧙‍♀️" },
+    { name: "Терек", icon: "🔮" },
+    { name: "Сирус", icon: "⚗️" },
+    { name: "Айнар", icon: "🧞" },
+    { name: "Дарэн", icon: "🤖" },
   ]),
+
+  // Inferno — демоны.
   ...genericHeroes("inferno", [
     { name: "Калх", icon: "😈" },
     { name: "Зидар", icon: "👹" },
+    { name: "Маркаль", icon: "🔥" },
+    { name: "Октавия", icon: "👿" },
+    { name: "Олема", icon: "🌋" },
+    { name: "Ксанфор", icon: "💀" },
   ]),
+
+  // Necropolis — нежить.
   ...genericHeroes("necropolis", [
     { name: "Сандро", icon: "☠️" },
     { name: "Найми", icon: "🧙‍♂️" },
+    { name: "Танар", icon: "🦴" },
+    { name: "Рейл", icon: "🧛" },
+    { name: "Стрейкер", icon: "👻" },
+    { name: "Тамика", icon: "🦇" },
   ]),
+
+  // Dungeon — подземный мир.
   ...genericHeroes("dungeon", [
     { name: "Мутара", icon: "🐍" },
     { name: "Аджит", icon: "🧙" },
+    { name: "Шакти", icon: "🦂" },
+    { name: "Дэйс", icon: "🦇" },
+    { name: "Лорелей", icon: "🐲" },
+    { name: "Шэккия", icon: "👁️" },
   ]),
+
+  // Stronghold — варвары.
   ...genericHeroes("stronghold", [
     { name: "Криг Гневный", icon: "🪓" },
     { name: "Тарнум", icon: "🛡️" },
+    { name: "Гундула", icon: "🐺" },
+    { name: "Гирд", icon: "👺" },
+    { name: "Ёг", icon: "🧌" },
+    { name: "Сола", icon: "🪶" },
   ]),
+
+  // Fortress — болото.
   ...genericHeroes("fortress", [
     { name: "Бидли", icon: "🐊" },
     { name: "Тазар", icon: "🦎" },
+    { name: "Андра", icon: "🐍" },
+    { name: "Альколд", icon: "🦂" },
+    { name: "Маерин", icon: "🐢" },
+    { name: "Бронвик", icon: "🪰" },
   ]),
+
+  // Conflux — стихии.
   ...genericHeroes("conflux", [
     { name: "Лусифер", icon: "🔥" },
     { name: "Гриндан", icon: "💨" },
+    { name: "Эриден", icon: "💧" },
+    { name: "Файр", icon: "🌀" },
+    { name: "Ига", icon: "🪨" },
+    { name: "Кип", icon: "⚡" },
   ]),
 ];
 
-export function pickHeroProto(faction: Faction, rng: () => number) {
+export function pickHeroProto(faction: Faction, rng: () => number): HeroProto {
   const list = HERO_PROTOS.filter(h => h.faction === faction);
   return list[Math.floor(rng() * list.length)];
+}
+
+export function pickHeroFromAnyOtherFaction(exclude: Faction, rng: () => number): HeroProto {
+  const factions = FACTION_LIST.filter(f => f !== exclude);
+  const faction = factions[Math.floor(rng() * factions.length)];
+  return pickHeroProto(faction, rng);
+}
+
+export function getHeroProto(id: string): HeroProto | undefined {
+  return HERO_PROTOS.find(p => p.id === id);
 }

@@ -6,7 +6,7 @@ import { ARTIFACTS, getArtifact } from "./data/artifacts";
 import { FACTION_BUILDINGS, getBuilding } from "./data/buildings";
 import { getPreset } from "./data/difficulty";
 import { FACTION_LIST, FACTION_META } from "./data/factions";
-import { pickHeroProto } from "./data/heroes";
+import { getHeroProto, pickHeroProto } from "./data/heroes";
 import { reverseRate } from "./data/marketRates";
 import { FACTION_UNIT_ORDER, getUnit, UNITS } from "./data/units";
 import { generateMap } from "./map/generate";
@@ -117,7 +117,7 @@ interface Actions {
   closeHero: () => void;
   buildBuilding: (townId: string, buildingId: string) => boolean;
   hireUnits: (townId: string, unitId: string, count: number) => boolean;
-  hireHero: (townId: string) => boolean;
+  hireHero: (townId: string, protoId?: string) => boolean;
   tradeResource: (townId: string, from: Resource, to: Resource, fromQty: number) => boolean;
   garrisonToHero: (townId: string, slotIdx: number) => void;
   heroToGarrison: (heroId: string, slotIdx: number) => void;
@@ -549,7 +549,7 @@ export const useGame = create<GameState & Actions>()(
         return true;
       },
 
-      hireHero: townId => {
+      hireHero: (townId, protoId) => {
         const s = get();
         const town = s.towns[townId];
         if (!town || !town.ownerId) return false;
@@ -562,7 +562,9 @@ export const useGame = create<GameState & Actions>()(
         if (!spawnPos) return false;
 
         const rng = mulberry32((Date.now() ^ town.id.length) >>> 0);
-        const proto = pickHeroProto(town.faction, rng);
+        // Если игрок выбрал конкретного кандидата (например, второй из таверны — из чужой
+        // фракции) — используем его. Иначе — случайный из родной фракции города.
+        const proto = (protoId && getHeroProto(protoId)) || pickHeroProto(town.faction, rng);
         const hid = makeId("h");
         const army: UnitStack[] = proto.startingArmy.map(stack => ({
           unitId: stack.unitId,
@@ -572,7 +574,7 @@ export const useGame = create<GameState & Actions>()(
           id: hid,
           ownerId: town.ownerId,
           name: proto.name,
-          faction: town.faction,
+          faction: proto.faction,
           pos: spawnPos,
           movePoints: 1500,
           maxMovePoints: 1500,

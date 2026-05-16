@@ -2,10 +2,11 @@ import { useState } from "react";
 
 import { FACTION_BUILDINGS, getBuilding } from "../game/data/buildings";
 import { FACTION_META } from "../game/data/factions";
+import { pickHeroFromAnyOtherFaction, pickHeroProto } from "../game/data/heroes";
 import { reverseRate } from "../game/data/marketRates";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
-import type { Resource, ResourceBag } from "../game/types";
+import type { Faction, Resource, ResourceBag } from "../game/types";
 import { dailyIncomeFor } from "../game/utils/income";
 import { canAfford, RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 
@@ -273,9 +274,10 @@ export function TownScreen() {
       {openModal === "tavern" && (
         <TavernModal
           gold={player.resources.gold}
+          townFaction={town.faction}
           onClose={() => setOpenModal(null)}
-          onHire={() => {
-            if (hireHero(town.id)) setOpenModal(null);
+          onHire={protoId => {
+            if (hireHero(town.id, protoId)) setOpenModal(null);
           }}
         />
       )}
@@ -290,21 +292,64 @@ export function TownScreen() {
   );
 }
 
-function TavernModal({ gold, onHire, onClose }: { gold: number; onHire: () => void; onClose: () => void }) {
+function TavernModal({
+  gold,
+  townFaction,
+  onHire,
+  onClose,
+}: {
+  gold: number;
+  townFaction: Faction;
+  onHire: (protoId: string) => void;
+  onClose: () => void;
+}) {
   const afford = gold >= HERO_HIRE_GOLD;
+  // Двое кандидатов: один точно из родной фракции, второй — из любой другой.
+  // Генерируется один раз при открытии (re-roll — закрыть и открыть таверну заново).
+  const [candidates] = useState(() => {
+    const rng = Math.random;
+    const local = pickHeroProto(townFaction, rng);
+    const foreign = pickHeroFromAnyOtherFaction(townFaction, rng);
+    return [local, foreign];
+  });
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 520 }}>
         <h2 style={{ marginTop: 0, color: "var(--gold)" }}>🍺 Таверна</h2>
-        <p style={{ color: "var(--text-dim)" }}>
-          За {HERO_HIRE_GOLD} золота можно нанять нового героя со стартовой армией. Появится в городе или рядом с ним.
+        <p style={{ color: "var(--text-dim)", marginTop: 0 }}>
+          Двое странников ждут найма за {HERO_HIRE_GOLD} 🪙. Слева — из вашей фракции, справа — иноземец.
         </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+          {candidates.map((c, idx) => (
+            <div
+              key={c.id}
+              style={{
+                background: "var(--bg-2)",
+                border: "1px solid var(--border)",
+                padding: 12,
+                borderRadius: 4,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{idx === 0 ? "Местный" : "Иноземец"}</div>
+              <div style={{ fontSize: 48, lineHeight: 1 }}>{c.icon}</div>
+              <div style={{ fontWeight: "bold" }}>{c.name}</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{FACTION_META[c.faction].name}</div>
+              <div style={{ fontSize: 11, color: "var(--text-dim)", textAlign: "center" }}>
+                {c.startingArmy.map(s => `${s.min}–${s.max} ${UNITS[s.unitId]?.name ?? s.unitId}`).join(", ")}
+              </div>
+              <button onClick={() => onHire(c.id)} disabled={!afford} style={{ width: "100%", marginTop: 6 }}>
+                Нанять ({HERO_HIRE_GOLD} 🪙)
+              </button>
+            </div>
+          ))}
+        </div>
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
           <button onClick={onClose} style={{ flex: 1 }}>
-            Отмена
-          </button>
-          <button onClick={onHire} disabled={!afford} style={{ flex: 2 }}>
-            Нанять героя ({HERO_HIRE_GOLD} 🪙)
+            Закрыть
           </button>
         </div>
       </div>
