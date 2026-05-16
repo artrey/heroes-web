@@ -141,37 +141,63 @@ export function chebyshev(a: Coord, b: Coord): number {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
-// BFS, чтобы получить достижимые клетки за speed ходов.
+// Стоимость шага по полю боя. Прямая клетка — 1, диагональ — 1.5: speed=4 даёт
+// либо ровно 4 клетки вдоль ряда, либо 2 диагонали (cost 3) + ещё одну прямую,
+// зона достижимости получается ромбовидной, а не квадратной.
+const STEP_ORTHO = 1;
+const STEP_DIAG = 1.5;
+
+// Dijkstra по 8 направлениям. Возвращает Map<"x,y", cost> для клеток, достижимых
+// за speed очков движения. Для летающих учитываются только сами клетки (препятствия
+// между не учитываются), но evklid в той же метрике, чтобы дальность была честной.
 export function reachable(b: BattleState, stack: BattleStack): Map<string, number> {
   const def = UNITS[stack.unitId];
   const speed = def.speed + bonusFor(b, stack.side).speed;
+  const occupied = new Set(b.stacks.filter(s => s.count > 0 && s.id !== stack.id).map(s => key(s.pos)));
   const dist = new Map<string, number>();
   const startKey = key(stack.pos);
   dist.set(startKey, 0);
-  const queue: Array<{ pos: Coord; d: number }> = [{ pos: stack.pos, d: 0 }];
-  const occupied = new Set(b.stacks.filter(s => s.count > 0 && s.id !== stack.id).map(s => key(s.pos)));
-  while (queue.length) {
-    const { pos, d } = queue.shift()!;
-    if (d >= speed) continue;
-    for (const n of neighbors(pos)) {
+
+  if (def.flying) {
+    // Летающие: ходят на любую клетку, расстояние до которой ≤ speed по той же
+    // octile-метрике; занятые клетки исключаются, препятствий на пути нет.
+    for (let y = 0; y < BATTLE_H; y++) {
+      for (let x = 0; x < BATTLE_W; x++) {
+        const k = key({ x, y });
+        if (k === startKey) continue;
+        if (occupied.has(k)) continue;
+        const dx = Math.abs(x - stack.pos.x);
+        const dy = Math.abs(y - stack.pos.y);
+        const cost = STEP_ORTHO * Math.max(dx, dy) + (STEP_DIAG - STEP_ORTHO) * Math.min(dx, dy);
+        if (cost <= speed) dist.set(k, cost);
+      }
+    }
+    return dist;
+  }
+
+  // Наземные: классический Dijkstra. Поле 15×11 = 165 клеток, простой линейный
+  // pick минимума достаточно — heap не нужен.
+  const open: Array<{ x: number; y: number; cost: number }> = [{ x: stack.pos.x, y: stack.pos.y, cost: 0 }];
+  while (open.length) {
+    let bestIdx = 0;
+    for (let i = 1; i < open.length; i++) if (open[i].cost < open[bestIdx].cost) bestIdx = i;
+    const cur = open.splice(bestIdx, 1)[0];
+    if (cur.cost > (dist.get(key(cur)) ?? Infinity)) continue;
+    for (const n of neighbors(cur)) {
       const k = key(n);
-      if (dist.has(k)) continue;
       if (occupied.has(k)) continue;
-      dist.set(k, d + 1);
-      queue.push({ pos: n, d: d + 1 });
+      const dx = Math.abs(n.x - cur.x);
+      const dy = Math.abs(n.y - cur.y);
+      const step = dx !== 0 && dy !== 0 ? STEP_DIAG : STEP_ORTHO;
+      const newCost = cur.cost + step;
+      if (newCost > speed) continue;
+      if (newCost < (dist.get(k) ?? Infinity)) {
+        dist.set(k, newCost);
+        open.push({ x: n.x, y: n.y, cost: newCost });
+      }
     }
   }
-  if (!def.flying) return dist;
-  // Летающие — игнорируют препятствия в пути, но не цель.
-  const flyDist = new Map<string, number>();
-  flyDist.set(startKey, 0);
-  for (let y = 0; y < BATTLE_H; y++) {
-    for (let x = 0; x < BATTLE_W; x++) {
-      const d = Math.max(Math.abs(x - stack.pos.x), Math.abs(y - stack.pos.y));
-      if (d <= speed && !occupied.has(key({ x, y }))) flyDist.set(key({ x, y }), d);
-    }
-  }
-  return flyDist;
+  return dist;
 }
 
 function key(c: Coord): string {
