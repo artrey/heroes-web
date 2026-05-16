@@ -152,7 +152,12 @@ export function TownScreen() {
                 <div className="row">
                   <span className="icon">{unit.icon}</span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: "bold" }}>{unit.name}</div>
+                    <div style={{ fontWeight: "bold" }}>
+                      {unit.name}{" "}
+                      <span style={{ color: "var(--text-dim)", fontWeight: "normal", fontSize: 12 }}>
+                        (+{unit.growth}/нед)
+                      </span>
+                    </div>
                     <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
                       Доступно: {avail} | Атк {unit.attack} / Защ {unit.defense} / HP {unit.hp}
                     </div>
