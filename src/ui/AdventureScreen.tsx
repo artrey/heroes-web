@@ -6,7 +6,7 @@ import { UNITS as UNITS_LOCAL } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
 import { dailyIncomeFor } from "../game/utils/income";
-import { findPath, isPassable, pathCost, STEP_STRAIGHT, stepCost } from "../game/utils/pathfind";
+import { findPath, isPassable, pathCost, stepCost } from "../game/utils/pathfind";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { computeVisibleTiles } from "../game/utils/visibility";
 import { computeDanger } from "../game/utils/zoc";

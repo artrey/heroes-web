@@ -18,7 +18,6 @@ import type {
   Hero,
   HeroArtifacts,
   HeroBonus,
-  MapObject,
   NewGameOptions,
   Player,
   Resource,
@@ -30,10 +29,10 @@ import { VISION_RADIUS_HERO, VISION_RADIUS_TOWN } from "./types";
 import { getEffectiveMaxMP } from "./utils/heroBonus";
 import { makeId, resetIdCounter } from "./utils/id";
 import { levelFromXp } from "./utils/leveling";
-import { chebyshev, findPath, isPassable, pathCost, STEP_STRAIGHT, stepCost } from "./utils/pathfind";
-import { add, canAfford, emptyBag, pay, RESOURCE_NAMES } from "./utils/resources";
-import { mulberry32, randChoice, randInt } from "./utils/rng";
-import { fullyRevealed, revealForPlayer } from "./utils/visibility";
+import { chebyshev, findPath, STEP_STRAIGHT, stepCost } from "./utils/pathfind";
+import { add, canAfford, pay, RESOURCE_NAMES } from "./utils/resources";
+import { mulberry32, randInt } from "./utils/rng";
+import { revealForPlayer } from "./utils/visibility";
 import { computeDanger } from "./utils/zoc";
 
 const PLAYER_COLORS = ["#d04040", "#4080d0", "#40b040", "#d0a040", "#a040b0", "#40b0b0", "#d04080", "#808080"];
@@ -982,48 +981,9 @@ export const useGame = create<GameState & Actions>()(
     }),
     {
       name: "heroes-web-save",
+      // Игра в активной разработке — поднимаем version при любом изменении формата.
+      // Несовместимые сейвы сбрасываются на initialState (главное меню) без миграции.
       version: 5,
-      migrate: (persisted, fromVersion) => {
-        const state = persisted as Partial<GameState>;
-        // v1 → v2: artifacts на герое теперь { equipped, backpack } вместо string[].
-        if (fromVersion < 2 && state?.heroes) {
-          for (const h of Object.values(state.heroes)) {
-            const legacy = h.artifacts as unknown;
-            if (Array.isArray(legacy)) {
-              h.artifacts = { equipped: {}, backpack: legacy as string[] };
-            } else if (!legacy) {
-              h.artifacts = { equipped: {}, backpack: [] };
-            }
-          }
-          // Активный бой из старой версии не воссоздать корректно — сбросим.
-          if (state.battle) {
-            state.battle = null;
-            if (state.phase === "battle") state.phase = "adventure";
-          }
-        }
-        // v2 → v3: появилось поле Player.revealed. У старых сохранений тумана не было —
-        // открываем им всю карту, чтобы не наказывать игрока ретроактивно.
-        if (fromVersion < 3 && state?.players && state.map) {
-          const all = fullyRevealed(state.map.width, state.map.height);
-          for (const p of Object.values(state.players)) {
-            if (!p.revealed) p.revealed = { ...all };
-          }
-        }
-        // v3 → v4: герой получил поле statBonus (прирост от уровней).
-        if (fromVersion < 4 && state?.heroes) {
-          for (const h of Object.values(state.heroes)) {
-            if (!h.statBonus) h.statBonus = { attack: 0, defense: 0 };
-          }
-        }
-        // v4 → v5: появилась сложность. Для старых сейвов считаем как "normal".
-        if (fromVersion < 5 && state?.options && !state.options.difficulty) {
-          state.options.difficulty = "normal";
-        }
-        if (fromVersion < 5 && state) {
-          if (!state.pendingMoveAfterCombat) state.pendingMoveAfterCombat = null;
-        }
-        return state as GameState;
-      },
     },
   ),
 );

@@ -52,15 +52,6 @@ function addCircle(set: Set<string>, pos: Coord, radius: number, w: number, h: n
   }
 }
 
-// Помечает все тайлы карты как уже виденные (нужно при миграции существующих сохранений).
-export function fullyRevealed(width: number, height: number): Record<string, true> {
-  const out: Record<string, true> = {};
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) out[`${x},${y}`] = true;
-  }
-  return out;
-}
-
 // Расширяет revealed для игрока новой круговой зоной. Возвращает обновлённого player.
 export function revealForPlayer(player: Player, pos: Coord, radius: number, width: number, height: number): Player {
   const newRevealed = revealAround(player.revealed ?? {}, pos, radius, width, height);
