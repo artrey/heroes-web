@@ -104,8 +104,9 @@ export function AdventureScreen() {
       selectedHeroId,
       revealed,
       visible,
+      danger,
     );
-  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible]);
+  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible, danger]);
 
   // Автоскролл лога вниз при появлении новых записей.
   useEffect(() => {
@@ -137,13 +138,14 @@ export function AdventureScreen() {
             selectedHeroId,
             revealed,
             visible,
+            danger,
           );
       }
     }
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
-  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible]);
+  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible, danger]);
 
   if (!map) return null;
 
@@ -428,6 +430,7 @@ function drawMap(
   selectedHeroId: string | null,
   revealed: Record<string, true>,
   visible: Set<string>,
+  danger: { cells: Set<string>; sources: Set<string> },
 ) {
   const W = map.width;
   const H = map.height;
@@ -541,6 +544,45 @@ function drawMap(
     ctx.lineWidth = 2;
     ctx.strokeRect(sx + 1, sy + 1, TILE_SIZE - 2, TILE_SIZE - 2);
     ctx.lineWidth = 1;
+  }
+
+  // Подсветка охраняющих юнитов:
+  // - hover над danger-cell (под охраной) → красные обводки соседних source-тайлов;
+  // - hover над самим source (монстр/вражеский герой) → подсветка всех его danger cells.
+  if (hoverTile) {
+    const hKey = `${hoverTile.x},${hoverTile.y}`;
+    const guards: Coord[] = [];
+    const guardedCells: Coord[] = [];
+    if (danger.cells.has(hKey)) {
+      for (const srcKey of danger.sources) {
+        const [gx, gy] = srcKey.split(",").map(Number);
+        if (Math.max(Math.abs(gx - hoverTile.x), Math.abs(gy - hoverTile.y)) === 1) {
+          guards.push({ x: gx, y: gy });
+        }
+      }
+    } else if (danger.sources.has(hKey)) {
+      for (const cellKey of danger.cells) {
+        const [cx, cy] = cellKey.split(",").map(Number);
+        if (Math.max(Math.abs(cx - hoverTile.x), Math.abs(cy - hoverTile.y)) === 1) {
+          guardedCells.push({ x: cx, y: cy });
+        }
+      }
+      guards.push(hoverTile);
+    }
+    for (const c of guardedCells) {
+      const sx = c.x * TILE_SIZE - camera.x;
+      const sy = c.y * TILE_SIZE - camera.y;
+      ctx.fillStyle = "rgba(220,60,40,0.18)";
+      ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
+    }
+    for (const g of guards) {
+      const sx = g.x * TILE_SIZE - camera.x;
+      const sy = g.y * TILE_SIZE - camera.y;
+      ctx.strokeStyle = "#ff5040";
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(sx + 1, sy + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+      ctx.lineWidth = 1;
+    }
   }
 
   // Минимап в правом нижнем углу.
