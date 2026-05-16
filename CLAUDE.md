@@ -16,6 +16,14 @@
 
 Стиль кода фиксирует `.prettierrc` (двойные кавычки, ширина 120, без скобок у одинарных аргументов arrow-функций, сортировка импортов через `@ianvs/prettier-plugin-sort-imports`). Не править форматирование руками — всегда через `npm run format`.
 
+## CI / GitHub Pages
+
+`.github/workflows/ci.yml` на каждый push / PR в `main` гоняет `format:check` → `typecheck` → `build`. На push в `main` ещё деплоит `dist/` на GitHub Pages.
+
+`vite.config.ts` читает `BASE_PATH` из env. В CI оно подставляется как `/<repo-name>/` (через `${{ github.event.repository.name }}`), локально пусто → `base = "/"`. Если делаете локальный билд под Pages — `BASE_PATH=/heroes-web/ npm run build`.
+
+Чтобы Pages заработал, в репозитории один раз: **Settings → Pages → Source: GitHub Actions**.
+
 ## Pre-commit hook
 
 Включён `husky` + `lint-staged`. При `git commit` автоматически:
