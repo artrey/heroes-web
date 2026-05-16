@@ -174,7 +174,8 @@ export function TownScreen() {
                     <div style={{ fontWeight: "bold" }}>
                       {unit.name}{" "}
                       <span style={{ color: "var(--text-dim)", fontWeight: "normal", fontSize: 12 }}>
-                        (+{unit.growth}/нед)
+                        (+{town.built.includes("fort") ? Math.max(1, Math.round(unit.growth * 1.5)) : unit.growth}/нед
+                        {town.built.includes("fort") ? " с фортом" : ""})
                       </span>
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-dim)" }}>

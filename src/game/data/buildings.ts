@@ -40,7 +40,7 @@ const baseBuildings: BuildingDef[] = [
   {
     id: "fort",
     name: "Форт",
-    description: "Укрепления города",
+    description: "Укрепления города. +50% к недельному приросту всех существ.",
     cost: { gold: 5000, wood: 20, ore: 20 },
     prereq: ["villageHall"],
     icon: "🏰",

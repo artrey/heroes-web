@@ -1019,7 +1019,10 @@ function applyWeeklyGrowth(state: GameState): Record<string, Town> {
   for (const [id, t] of Object.entries(state.towns)) {
     const newAvail = { ...t.availableUnits };
     const owner = t.ownerId ? state.players[t.ownerId] : null;
-    const mult = owner && !owner.isHuman && preset ? preset.aiGrowthMult : 1;
+    const aiMult = owner && !owner.isHuman && preset ? preset.aiGrowthMult : 1;
+    // Форт даёт +50% к приросту всех существ в этом городе.
+    const fortMult = t.built.includes("fort") ? 1.5 : 1;
+    const mult = aiMult * fortMult;
     for (const bId of t.built) {
       const def = FACTION_BUILDINGS[t.faction].find(b => b.id === bId);
       if (def?.produces) {
