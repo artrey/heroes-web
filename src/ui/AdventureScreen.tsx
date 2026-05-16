@@ -124,13 +124,18 @@ export function AdventureScreen() {
     const selectedHero = selectedHeroId ? heroes[selectedHeroId] : null;
     const canMoveSelected = selectedHero && selectedHero.ownerId === activePlayerId;
 
-    if (tile.objectId) {
-      // Клик по своему герою — выбрать.
-      const heroHere = Object.values(heroes).find(h => h.pos.x === t.x && h.pos.y === t.y);
-      if (heroHere && heroHere.ownerId === activePlayerId) {
-        selectHero(heroHere.id);
-        return;
+    // Клик по герою на этой клетке (герои лежат не в map.objects, а в state.heroes).
+    const heroHere = Object.values(heroes).find(h => h.pos.x === t.x && h.pos.y === t.y);
+    if (heroHere && heroHere.ownerId === activePlayerId) {
+      // Свой союзный герой и выбран другой свой смежный герой — открыть meeting.
+      if (selectedHero && selectedHero.id !== heroHere.id) {
+        if (useGame.getState().openHeroMeeting(heroHere.id)) return;
       }
+      selectHero(heroHere.id);
+      return;
+    }
+
+    if (tile.objectId) {
       // Клик по своему городу.
       const tw = towns[tile.objectId];
       if (tw && tw.ownerId === activePlayerId) {

@@ -36,6 +36,7 @@ const attacker: Hero = {
     { unitId: "archer", count: 12 },
     { unitId: "griffin", count: 5 },
   ],
+  artifacts: { equipped: {}, backpack: [] },
   level: 1,
   xp: 0,
   icon: "🤴",
@@ -72,5 +73,24 @@ console.log(
   battle.stacks.filter(s => s.side === "defender").map(s => `${UNITS[s.unitId].name}=${s.count}`),
 );
 console.log("Last 5 log lines:", battle.log.slice(-5));
+
+// 3. Бонусы артефактов: повторяем тот же бой с надетым "Мечом Гогнара" у атакующего.
+const attackerBuffed: Hero = {
+  ...attacker,
+  artifacts: { equipped: { weapon: "sword_judgement" }, backpack: [] },
+};
+let battle2 = startBattle({ attackerHero: attackerBuffed, defenderHero: defender, defenderObjectId: null });
+let i2 = 0;
+let res2: "attacker" | "defender" | null = null;
+while (!res2 && i2 < 300) {
+  battle2 = stepBattleAI(battle2).battle;
+  res2 = isBattleOver(battle2);
+  i2++;
+}
+console.log(`With +12 atk artifact: ${i2} actions, winner: ${res2}, round: ${battle2.round}`);
+console.log(
+  "Attacker remaining:",
+  battle2.stacks.filter(s => s.side === "attacker").map(s => `${UNITS[s.unitId].name}=${s.count}`),
+);
 
 console.log("=== OK ===");

@@ -51,6 +51,23 @@ export interface BuildingDef {
   icon: string;
 }
 
+export type ArtifactSlot = "helm" | "neck" | "weapon" | "shield" | "armor" | "ring" | "feet";
+
+export const ARTIFACT_SLOT_ORDER: ArtifactSlot[] = ["helm", "neck", "weapon", "shield", "armor", "ring", "feet"];
+
+export interface HeroBonus {
+  attack: number;
+  defense: number;
+  speed: number;
+  hpBonus: number;
+  movement: number;
+}
+
+export interface HeroArtifacts {
+  equipped: Partial<Record<ArtifactSlot, string>>;
+  backpack: string[];
+}
+
 export interface Hero {
   id: string;
   ownerId: string; // playerId
@@ -58,11 +75,22 @@ export interface Hero {
   faction: Faction;
   pos: Coord;
   movePoints: number;
-  maxMovePoints: number;
+  maxMovePoints: number; // base без бонусов от артефактов
   army: UnitStack[]; // до 7 слотов
+  artifacts: HeroArtifacts;
   level: number;
   xp: number;
   icon: string;
+}
+
+export interface ArtifactDef {
+  id: string;
+  name: string;
+  rarity: "treasure" | "minor" | "major" | "relic";
+  slot: ArtifactSlot;
+  bonus: Partial<HeroBonus>;
+  icon: string;
+  description: string;
 }
 
 export interface Town {
@@ -137,7 +165,7 @@ export interface Player {
   townIds: string[];
 }
 
-export type Phase = "menu" | "newGame" | "adventure" | "town" | "battle" | "gameOver";
+export type Phase = "menu" | "newGame" | "adventure" | "town" | "battle" | "heroMeeting" | "gameOver";
 
 export interface BattleStack {
   id: string;
@@ -156,6 +184,8 @@ export interface BattleState {
   defenderHeroId: string | null; // null = нейтральные
   defenderObjectId: string | null; // id монстра на карте
   defenderArmy?: UnitStack[]; // если нет героя
+  attackerBonus: HeroBonus;
+  defenderBonus: HeroBonus;
   stacks: BattleStack[];
   turnOrder: string[]; // id stacks по инициативе
   activeStackIdx: number;
@@ -188,6 +218,7 @@ export interface GameState {
   battle: BattleState | null;
   selectedHeroId: string | null;
   selectedTownId: string | null;
+  meetingHeroIds: [string, string] | null;
   pendingObjectVisit: string | null;
   options: NewGameOptions | null;
   log: string[];

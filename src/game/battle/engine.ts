@@ -1,5 +1,7 @@
+import { EMPTY_BONUS } from "../data/artifacts";
 import { getUnit, UNITS } from "../data/units";
-import type { BattleStack, BattleState, Coord, Hero, UnitStack } from "../types";
+import type { BattleStack, BattleState, Coord, Hero, HeroBonus, UnitStack } from "../types";
+import { getHeroBonus } from "../utils/heroBonus";
 import { makeId } from "../utils/id";
 
 // Поле боя 15x11 — близко к HoMM3. Простая квадратная сетка с 8-связностью.
@@ -15,6 +17,8 @@ interface StartArgs {
 
 export function startBattle(args: StartArgs): BattleState {
   const stacks: BattleStack[] = [];
+  const attackerBonus = getHeroBonus(args.attackerHero);
+  const defenderBonus = args.defenderHero ? getHeroBonus(args.defenderHero) : EMPTY_BONUS;
 
   // Атакующий — слева, столбец 0.
   args.attackerHero.army.forEach((u, idx) => {
@@ -24,7 +28,7 @@ export function startBattle(args: StartArgs): BattleState {
       id: makeId("bs"),
       unitId: u.unitId,
       count: u.count,
-      hp: def.hp,
+      hp: def.hp + attackerBonus.hpBonus,
       side: "attacker",
       pos: { x: 0, y },
       hasActed: false,
@@ -42,7 +46,7 @@ export function startBattle(args: StartArgs): BattleState {
       id: makeId("bs"),
       unitId: u.unitId,
       count: u.count,
-      hp: def.hp,
+      hp: def.hp + defenderBonus.hpBonus,
       side: "defender",
       pos: { x: BATTLE_W - 1, y },
       hasActed: false,
@@ -51,12 +55,14 @@ export function startBattle(args: StartArgs): BattleState {
     });
   });
 
-  const turnOrder = computeTurnOrder(stacks);
+  const turnOrder = computeTurnOrder(stacks, { attackerBonus, defenderBonus });
   return {
     attackerHeroId: args.attackerHero.id,
     defenderHeroId: args.defenderHero?.id ?? null,
     defenderObjectId: args.defenderObjectId,
     defenderArmy: args.defenderArmy,
+    attackerBonus,
+    defenderBonus,
     stacks,
     turnOrder,
     activeStackIdx: 0,
@@ -66,16 +72,37 @@ export function startBattle(args: StartArgs): BattleState {
   };
 }
 
+function bonusFor(b: BattleState, side: "attacker" | "defender"): HeroBonus {
+  return side === "attacker" ? b.attackerBonus : b.defenderBonus;
+}
+
+function effectiveStats(stack: BattleStack, bonus: HeroBonus) {
+  const def = UNITS[stack.unitId];
+  return {
+    attack: def.attack + bonus.attack,
+    defense: def.defense + bonus.defense,
+    speed: def.speed + bonus.speed,
+    hp: def.hp + bonus.hpBonus,
+  };
+}
+
 function positionForSlot(total: number, idx: number): number {
   // Равномерное расположение по 11 клеткам в столбце.
   const spacing = Math.max(1, Math.floor(BATTLE_H / (total + 1)));
   return Math.min(BATTLE_H - 1, spacing * (idx + 1));
 }
 
-function computeTurnOrder(stacks: BattleStack[]): string[] {
+function computeTurnOrder(
+  stacks: BattleStack[],
+  bonuses: { attackerBonus: HeroBonus; defenderBonus: HeroBonus },
+): string[] {
   return stacks
     .filter(s => s.count > 0)
-    .map(s => ({ s, ini: UNITS[s.unitId].initiative + UNITS[s.unitId].speed * 0.01 }))
+    .map(s => {
+      const bonus = s.side === "attacker" ? bonuses.attackerBonus : bonuses.defenderBonus;
+      const speed = UNITS[s.unitId].speed + bonus.speed;
+      return { s, ini: UNITS[s.unitId].initiative + speed * 0.01 };
+    })
     .sort((a, b) => b.ini - a.ini)
     .map(x => x.s.id);
 }
@@ -100,7 +127,7 @@ export function chebyshev(a: Coord, b: Coord): number {
 // BFS, чтобы получить достижимые клетки за speed ходов.
 export function reachable(b: BattleState, stack: BattleStack): Map<string, number> {
   const def = UNITS[stack.unitId];
-  const speed = def.speed;
+  const speed = def.speed + bonusFor(b, stack.side).speed;
   const dist = new Map<string, number>();
   const startKey = key(stack.pos);
   dist.set(startKey, 0);
@@ -157,28 +184,30 @@ export function canShoot(b: BattleState, attacker: BattleStack): boolean {
 }
 
 function rollDamage(
+  b: BattleState,
   attacker: BattleStack,
   defender: BattleStack,
   ranged: boolean,
 ): { dmg: number; killed: number; remainingHp: number; newCount: number } {
   const aDef = UNITS[attacker.unitId];
-  const dDef = UNITS[defender.unitId];
+  const aStats = effectiveStats(attacker, bonusFor(b, attacker.side));
+  const dStats = effectiveStats(defender, bonusFor(b, defender.side));
   // База: среднее урона * count.
   const baseDmgPerUnit = (aDef.minDmg + aDef.maxDmg) / 2;
   let totalDmg = baseDmgPerUnit * attacker.count;
   // Модификатор атака/защита.
-  const diff = aDef.attack - dDef.defense;
+  const diff = aStats.attack - dStats.defense;
   if (diff > 0) totalDmg *= 1 + Math.min(diff, 60) * 0.05;
   else if (diff < 0) totalDmg *= 1 / (1 + Math.min(-diff, 28) * 0.025);
   // Range penalty: если дистанция > 5, урон вдвое.
   if (ranged && chebyshev(attacker.pos, defender.pos) > 5) totalDmg *= 0.5;
   totalDmg = Math.max(1, Math.floor(totalDmg));
 
-  // Применить к defender: учесть оставшиеся hp верхнего юнита.
-  const totalDefenderHp = (defender.count - 1) * dDef.hp + defender.hp;
+  // Применить к defender: учесть оставшиеся hp верхнего юнита (с учётом бонуса).
+  const totalDefenderHp = (defender.count - 1) * dStats.hp + defender.hp;
   const newHpTotal = Math.max(0, totalDefenderHp - totalDmg);
-  const newCount = Math.ceil(newHpTotal / dDef.hp);
-  const remainingHp = newCount === 0 ? 0 : newHpTotal - (newCount - 1) * dDef.hp;
+  const newCount = Math.ceil(newHpTotal / dStats.hp);
+  const remainingHp = newCount === 0 ? 0 : newHpTotal - (newCount - 1) * dStats.hp;
   const killed = defender.count - newCount;
   return { dmg: totalDmg, killed, remainingHp, newCount };
 }
@@ -194,13 +223,13 @@ export function doAttack(b: BattleState, attackerId: string, defenderId: string,
   // Перемещение в approachTo, если задано.
   if (approachTo) a.pos = { ...approachTo };
   // Удар.
-  const res = rollDamage(a, d, false);
+  const res = rollDamage(newB, a, d, false);
   d.count = res.newCount;
   d.hp = res.remainingHp;
   newB.log.push(`${aDef.name} (${a.count}) бьёт ${UNITS[d.unitId].name}: -${res.killed}`);
   // Контратака.
   if (d.count > 0 && !d.hasRetaliated && !UNITS[d.unitId].ranged) {
-    const ret = rollDamage(d, a, false);
+    const ret = rollDamage(newB, d, a, false);
     a.count = ret.newCount;
     a.hp = ret.remainingHp;
     d.hasRetaliated = true;
@@ -216,7 +245,7 @@ export function doShoot(b: BattleState, attackerId: string, defenderId: string):
   if (!a || !d) return b;
   if (!canShoot(newB, a)) return b;
   a.shots -= 1;
-  const res = rollDamage(a, d, true);
+  const res = rollDamage(newB, a, d, true);
   d.count = res.newCount;
   d.hp = res.remainingHp;
   newB.log.push(`${UNITS[a.unitId].name} стреляет в ${UNITS[d.unitId].name}: -${res.killed}`);
@@ -257,7 +286,7 @@ function finalizeTurn(b: BattleState, justActedId: string): BattleState {
   }
   // Если все ходили — новый раунд.
   const newStacks = b.stacks.map(st => ({ ...st, hasActed: false, hasRetaliated: false }));
-  const newOrder = computeTurnOrder(newStacks);
+  const newOrder = computeTurnOrder(newStacks, { attackerBonus: b.attackerBonus, defenderBonus: b.defenderBonus });
   return { ...b, stacks: newStacks, turnOrder: newOrder, activeStackIdx: 0, round: b.round + 1 };
 }
 

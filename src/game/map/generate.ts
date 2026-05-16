@@ -1,3 +1,4 @@
+import { ARTIFACT_IDS, ARTIFACTS } from "../data/artifacts";
 import { getTemplate } from "../data/templates";
 import { UNITS } from "../data/units";
 import type { Coord, Faction, GameMap, MapObject, Resource, Terrain, Tile } from "../types";
@@ -194,6 +195,25 @@ export function generateMap(input: GenInput): GenOutput {
       blocking: false,
       passable: true,
       icon: "🎁",
+    };
+    tiles[pos.y * W + pos.x].objectId = obj.id;
+    objects[obj.id] = obj;
+  }
+
+  // 8) Артефакты — рандомные из пула, заметно реже сундуков.
+  const artifactCount = Math.floor(W * H * 0.005);
+  for (let i = 0; i < artifactCount; i++) {
+    const pos = findEmptyTile(rng, tiles, W, H, placedTowns, 3);
+    if (!pos) continue;
+    const artifactId = randChoice(rng, ARTIFACT_IDS);
+    const obj: MapObject = {
+      id: makeId("art"),
+      kind: "artifact",
+      pos,
+      artifactId,
+      blocking: false,
+      passable: true,
+      icon: ARTIFACTS[artifactId].icon,
     };
     tiles[pos.y * W + pos.x].objectId = obj.id;
     objects[obj.id] = obj;

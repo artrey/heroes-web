@@ -2,16 +2,19 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { isBattleOver, startBattle, stepBattleAI } from "./battle/engine";
+import { ARTIFACTS, getArtifact } from "./data/artifacts";
 import { FACTION_BUILDINGS, getBuilding } from "./data/buildings";
 import { pickHeroProto } from "./data/heroes";
 import { FACTION_UNIT_ORDER, getUnit, UNITS } from "./data/units";
 import { generateMap } from "./map/generate";
 import type {
+  ArtifactSlot,
   BattleState,
   Coord,
   Faction,
   GameState,
   Hero,
+  HeroArtifacts,
   MapObject,
   NewGameOptions,
   Player,
@@ -19,6 +22,7 @@ import type {
   Town,
   UnitStack,
 } from "./types";
+import { getEffectiveMaxMP } from "./utils/heroBonus";
 import { makeId, resetIdCounter } from "./utils/id";
 import { chebyshev, findPath, isPassable, pathCost } from "./utils/pathfind";
 import { add, canAfford, emptyBag, pay, RESOURCE_NAMES } from "./utils/resources";
@@ -69,6 +73,7 @@ const initialState: GameState = {
   battle: null,
   selectedHeroId: null,
   selectedTownId: null,
+  meetingHeroIds: null,
   pendingObjectVisit: null,
   options: null,
   log: [],
@@ -90,6 +95,16 @@ interface Actions {
   hireHero: (townId: string) => boolean;
   garrisonToHero: (townId: string, slotIdx: number) => void;
   heroToGarrison: (heroId: string, slotIdx: number) => void;
+  openHeroMeeting: (otherHeroId: string) => boolean;
+  closeHeroMeeting: () => void;
+  swapArmySlots: (heroIdA: string, slotA: number, heroIdB: string, slotB: number) => void;
+  equipFromBackpack: (heroId: string, backpackIdx: number) => void;
+  unequipToBackpack: (heroId: string, slot: ArtifactSlot) => void;
+  transferArtifact: (
+    fromHeroId: string,
+    source: { kind: "equipped"; slot: ArtifactSlot } | { kind: "backpack"; idx: number },
+    toHeroId: string,
+  ) => void;
   battleAct: (action: BattleAction) => void;
   endBattleVictory: () => void;
   endBattleDefeat: () => void;
@@ -192,6 +207,7 @@ export const useGame = create<GameState & Actions>()(
             movePoints: 1500,
             maxMovePoints: 1500,
             army,
+            artifacts: { equipped: {}, backpack: [] },
             level: 1,
             xp: 0,
             icon: proto.icon,
@@ -357,7 +373,7 @@ export const useGame = create<GameState & Actions>()(
 
         // Восстановим MP всем героям следующего активного игрока и далее — но проще всем.
         const heroes = Object.fromEntries(
-          Object.entries(get().heroes).map(([id, h]) => [id, { ...h, movePoints: h.maxMovePoints }]),
+          Object.entries(get().heroes).map(([id, h]) => [id, { ...h, movePoints: getEffectiveMaxMP(h) }]),
         );
 
         // Дневной доход для всех игроков (золото от ратуш + шахты).
@@ -483,6 +499,7 @@ export const useGame = create<GameState & Actions>()(
           movePoints: 1500,
           maxMovePoints: 1500,
           army,
+          artifacts: { equipped: {}, backpack: [] },
           level: 1,
           xp: 0,
           icon: proto.icon,
@@ -538,6 +555,146 @@ export const useGame = create<GameState & Actions>()(
         set({
           heroes: { ...s.heroes, [heroId]: { ...hero, army: newHeroArmy } },
           towns: { ...s.towns, [town.id]: { ...town, garrison: newGarrison } },
+        });
+      },
+
+      openHeroMeeting: otherHeroId => {
+        const s = get();
+        const myId = s.selectedHeroId;
+        if (!myId || myId === otherHeroId) return false;
+        const mine = s.heroes[myId];
+        const other = s.heroes[otherHeroId];
+        if (!mine || !other) return false;
+        // Только союзные (один владелец) и только смежные клетки (chebyshev = 1).
+        if (mine.ownerId !== other.ownerId) return false;
+        if (chebyshev(mine.pos, other.pos) !== 1) return false;
+        set({ phase: "heroMeeting", meetingHeroIds: [myId, otherHeroId] });
+        return true;
+      },
+
+      closeHeroMeeting: () => set({ phase: "adventure", meetingHeroIds: null }),
+
+      swapArmySlots: (heroIdA, slotA, heroIdB, slotB) => {
+        const s = get();
+        const a = s.heroes[heroIdA];
+        const b = s.heroes[heroIdB];
+        if (!a || !b) return;
+        if (a.ownerId !== b.ownerId) return;
+        // Один и тот же герой, разные слоты — внутренний swap.
+        // Разные герои — swap между армиями (включая мердж одинаковых стеков).
+        if (heroIdA === heroIdB) {
+          const army = a.army.slice();
+          const tmp = army[slotA];
+          army[slotA] = army[slotB];
+          army[slotB] = tmp;
+          // Очистка undefined-хвоста: лишних дыр в массиве не остаётся.
+          const clean = army.filter(Boolean);
+          set({ heroes: { ...s.heroes, [heroIdA]: { ...a, army: clean } } });
+          return;
+        }
+        const stackA = a.army[slotA];
+        const stackB = b.army[slotB];
+        const newA = a.army.slice();
+        const newB = b.army.slice();
+        // Если у обоих один и тот же тип юнита — слить в B, освободить слот у A.
+        if (stackA && stackB && stackA.unitId === stackB.unitId) {
+          newB[slotB] = { unitId: stackB.unitId, count: stackB.count + stackA.count };
+          newA.splice(slotA, 1);
+        } else {
+          // Чистый swap. Если в одном слоте undefined — это просто перемещение.
+          if (stackA && !stackB) {
+            newB[slotB] = stackA;
+            newA.splice(slotA, 1);
+          } else if (!stackA && stackB) {
+            newA[slotA] = stackB;
+            newB.splice(slotB, 1);
+          } else if (stackA && stackB) {
+            newA[slotA] = stackB;
+            newB[slotB] = stackA;
+          }
+        }
+        set({
+          heroes: {
+            ...s.heroes,
+            [heroIdA]: { ...a, army: newA.filter(Boolean) },
+            [heroIdB]: { ...b, army: newB.filter(Boolean) },
+          },
+        });
+      },
+
+      equipFromBackpack: (heroId, backpackIdx) => {
+        const s = get();
+        const hero = s.heroes[heroId];
+        if (!hero) return;
+        const artId = hero.artifacts.backpack[backpackIdx];
+        if (!artId) return;
+        const def = ARTIFACTS[artId];
+        if (!def) return;
+        const slot = def.slot;
+        const currentInSlot = hero.artifacts.equipped[slot];
+        const newBackpack = hero.artifacts.backpack.slice();
+        newBackpack.splice(backpackIdx, 1);
+        // Если в слоте уже что-то надето — заменяем, вытесненный артефакт уходит в backpack на ту же позицию.
+        if (currentInSlot) newBackpack.splice(backpackIdx, 0, currentInSlot);
+        set({
+          heroes: {
+            ...s.heroes,
+            [heroId]: {
+              ...hero,
+              artifacts: { equipped: { ...hero.artifacts.equipped, [slot]: artId }, backpack: newBackpack },
+            },
+          },
+        });
+      },
+
+      unequipToBackpack: (heroId, slot) => {
+        const s = get();
+        const hero = s.heroes[heroId];
+        if (!hero) return;
+        const artId = hero.artifacts.equipped[slot];
+        if (!artId) return;
+        const newEquipped = { ...hero.artifacts.equipped };
+        delete newEquipped[slot];
+        set({
+          heroes: {
+            ...s.heroes,
+            [heroId]: {
+              ...hero,
+              artifacts: { equipped: newEquipped, backpack: [...hero.artifacts.backpack, artId] },
+            },
+          },
+        });
+      },
+
+      transferArtifact: (fromHeroId, source, toHeroId) => {
+        const s = get();
+        const from = s.heroes[fromHeroId];
+        const to = s.heroes[toHeroId];
+        if (!from || !to || fromHeroId === toHeroId) return;
+        if (from.ownerId !== to.ownerId) return;
+        // Извлечь артефакт из исходной локации.
+        let artId: string | undefined;
+        let newFromArtifacts: HeroArtifacts;
+        if (source.kind === "equipped") {
+          artId = from.artifacts.equipped[source.slot];
+          if (!artId) return;
+          const newEquipped = { ...from.artifacts.equipped };
+          delete newEquipped[source.slot];
+          newFromArtifacts = { equipped: newEquipped, backpack: from.artifacts.backpack };
+        } else {
+          artId = from.artifacts.backpack[source.idx];
+          if (!artId) return;
+          const newBackpack = from.artifacts.backpack.slice();
+          newBackpack.splice(source.idx, 1);
+          newFromArtifacts = { equipped: from.artifacts.equipped, backpack: newBackpack };
+        }
+        // Получатель — всегда в backpack, пусть сам решит надевать или нет.
+        set({
+          heroes: {
+            ...s.heroes,
+            [fromHeroId]: { ...from, artifacts: newFromArtifacts },
+            [toHeroId]: { ...to, artifacts: { ...to.artifacts, backpack: [...to.artifacts.backpack, artId] } },
+          },
         });
       },
 
@@ -638,8 +795,28 @@ export const useGame = create<GameState & Actions>()(
     }),
     {
       name: "heroes-web-save",
-      version: 1,
-      // Не сохраняем placeholders в localStorage. Сохраняем всё нужное.
+      version: 2,
+      migrate: (persisted, fromVersion) => {
+        // v1 → v2: artifacts на герое теперь { equipped, backpack } вместо string[].
+        // BattleState получил поля attackerBonus / defenderBonus.
+        const state = persisted as Partial<GameState>;
+        if (fromVersion < 2 && state?.heroes) {
+          for (const h of Object.values(state.heroes)) {
+            const legacy = h.artifacts as unknown;
+            if (Array.isArray(legacy)) {
+              h.artifacts = { equipped: {}, backpack: legacy as string[] };
+            } else if (!legacy) {
+              h.artifacts = { equipped: {}, backpack: [] };
+            }
+          }
+          // Активный бой из старой версии не воссоздать корректно — сбросим, чтобы избежать рассинхрона.
+          if (state.battle) {
+            state.battle = null;
+            if (state.phase === "battle") state.phase = "adventure";
+          }
+        }
+        return state as GameState;
+      },
     },
   ),
 );
@@ -779,6 +956,30 @@ function interactWithObject(objId: string, heroId?: string) {
     useGame.setState({
       map: { ...s.map, objects: newObjects },
       log: [...s.log, `Шахта (${RESOURCE_NAMES[obj.mineResource]}) захвачена`],
+    });
+    return;
+  }
+
+  if (obj.kind === "artifact" && obj.artifactId) {
+    if (!hero) return;
+    const artDef = getArtifact(obj.artifactId);
+    // Если слот свободен — сразу экипируем; иначе кидаем в backpack.
+    const slotFree = !hero.artifacts.equipped[artDef.slot];
+    const newArtifacts: HeroArtifacts = slotFree
+      ? { ...hero.artifacts, equipped: { ...hero.artifacts.equipped, [artDef.slot]: obj.artifactId } }
+      : { ...hero.artifacts, backpack: [...hero.artifacts.backpack, obj.artifactId] };
+    const newHero = { ...hero, artifacts: newArtifacts };
+    const newObjects = { ...s.map.objects };
+    delete newObjects[obj.id];
+    const newTiles = s.map.tiles.slice();
+    newTiles[obj.pos.y * s.map.width + obj.pos.x] = {
+      ...newTiles[obj.pos.y * s.map.width + obj.pos.x],
+      objectId: null,
+    };
+    useGame.setState({
+      heroes: { ...s.heroes, [hero.id]: newHero },
+      map: { ...s.map, objects: newObjects, tiles: newTiles },
+      log: [...s.log, `Подобран артефакт: ${artDef.name}${slotFree ? " (надет)" : " (в рюкзак)"}`],
     });
     return;
   }
