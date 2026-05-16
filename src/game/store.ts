@@ -1,0 +1,906 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type {
+  GameState, NewGameOptions, Hero, Town, Player, ResourceBag,
+  Coord, BattleState, MapObject, UnitStack, Faction,
+} from './types';
+import { emptyBag, canAfford, pay, add, RESOURCE_NAMES } from './utils/resources';
+import { mulberry32, randChoice, randInt } from './utils/rng';
+import { makeId, resetIdCounter } from './utils/id';
+import { generateMap } from './map/generate';
+import { findPath, pathCost, isPassable, chebyshev } from './utils/pathfind';
+import { getBuilding, FACTION_BUILDINGS } from './data/buildings';
+import { UNITS, FACTION_UNIT_ORDER, getUnit } from './data/units';
+import { pickHeroProto } from './data/heroes';
+import { startBattle, isBattleOver, stepBattleAI } from './battle/engine';
+
+const PLAYER_COLORS = ['#d04040', '#4080d0', '#40b040', '#d0a040', '#a040b0', '#40b0b0', '#d04080', '#808080'];
+
+const initialState: GameState = {
+  phase: 'menu',
+  day: 1, week: 1, month: 1,
+  activePlayerId: '',
+  players: {},
+  playerOrder: [],
+  heroes: {},
+  towns: {},
+  map: null,
+  battle: null,
+  selectedHeroId: null,
+  selectedTownId: null,
+  pendingObjectVisit: null,
+  options: null,
+  log: [],
+  winnerId: null,
+};
+
+interface Actions {
+  goToMenu: () => void;
+  goToNewGame: () => void;
+  startGame: (opts: NewGameOptions) => void;
+  selectHero: (id: string | null) => void;
+  selectTown: (id: string | null) => void;
+  moveHeroTo: (target: Coord) => 'ok' | 'blocked' | 'noPoints' | 'noPath' | 'interaction';
+  endTurn: () => void;
+  openTown: (id: string) => void;
+  closeTown: () => void;
+  buildBuilding: (townId: string, buildingId: string) => boolean;
+  hireUnits: (townId: string, unitId: string, count: number) => boolean;
+  garrisonToHero: (townId: string, slotIdx: number) => void;
+  heroToGarrison: (heroId: string, slotIdx: number) => void;
+  battleAct: (action: BattleAction) => void;
+  endBattleVictory: () => void;
+  endBattleDefeat: () => void;
+  reset: () => void;
+}
+
+export type BattleAction =
+  | { type: 'move'; targetIdx: number; to: Coord }
+  | { type: 'attack'; targetIdx: number; defenderIdx: number; approachFrom?: Coord }
+  | { type: 'shoot'; targetIdx: number; defenderIdx: number }
+  | { type: 'wait'; targetIdx: number }
+  | { type: 'defend'; targetIdx: number };
+
+export const useGame = create<GameState & Actions>()(
+  persist(
+    (set, get) => ({
+      ...initialState,
+
+      goToMenu: () => set({ phase: 'menu' }),
+      goToNewGame: () => set({ phase: 'newGame' }),
+
+      startGame: (opts) => {
+        resetIdCounter();
+        const factions: Faction[] = ['castle', 'rampart', 'castle', 'rampart', 'castle', 'rampart', 'castle', 'rampart'];
+        factions[0] = opts.playerFaction;
+        for (let i = 1; i <= opts.opponentCount; i++) {
+          factions[i] = i % 2 === 0 ? opts.playerFaction : (opts.playerFaction === 'castle' ? 'rampart' : 'castle');
+        }
+        const playerCount = 1 + opts.opponentCount;
+
+        const { map, playerStarts } = generateMap({
+          templateId: opts.templateId,
+          width: opts.mapWidth,
+          height: opts.mapHeight,
+          seed: opts.seed,
+          playerCount,
+          factions,
+        });
+
+        const rng = mulberry32(opts.seed ^ 0xdeadbeef);
+        const players: Record<string, Player> = {};
+        const heroes: Record<string, Hero> = {};
+        const towns: Record<string, Town> = {};
+        const playerOrder: string[] = [];
+
+        for (let i = 0; i < playerCount; i++) {
+          const start = playerStarts[i];
+          const pid = makeId('p');
+          playerOrder.push(pid);
+
+          // Город.
+          const tid = makeId('t');
+          const town: Town = {
+            id: tid,
+            ownerId: pid,
+            name: i === 0 ? `${opts.playerName} — столица` : `Бастион ${i}`,
+            faction: start.faction,
+            pos: start.townPos,
+            built: ['villageHall'],
+            builtToday: false,
+            garrison: [],
+            availableUnits: { [`${FACTION_UNIT_ORDER[start.faction][0]}`]: 0 },
+            hasFort: false,
+          };
+          towns[tid] = town;
+          // Положим объект-города на карту.
+          map.tiles[town.pos.y * map.width + town.pos.x].objectId = tid;
+          map.objects[tid] = {
+            id: tid,
+            kind: 'dwelling',
+            pos: town.pos,
+            ownerId: pid,
+            blocking: true,
+            passable: true,
+            icon: start.faction === 'castle' ? '🏰' : '🏯',
+          };
+
+          // Герой.
+          const proto = pickHeroProto(start.faction, rng);
+          const hid = makeId('h');
+          const army: UnitStack[] = proto.startingArmy.map((s) => ({
+            unitId: s.unitId, count: randInt(rng, s.min, s.max),
+          }));
+          const hero: Hero = {
+            id: hid,
+            ownerId: pid,
+            name: proto.name,
+            faction: start.faction,
+            pos: start.heroPos,
+            movePoints: 1500,
+            maxMovePoints: 1500,
+            army,
+            level: 1,
+            xp: 0,
+            icon: proto.icon,
+          };
+          heroes[hid] = hero;
+
+          // Игрок.
+          const res: ResourceBag = { gold: 10000, wood: 20, ore: 20, mercury: 5, sulfur: 5, crystal: 5, gems: 5 };
+          players[pid] = {
+            id: pid,
+            name: i === 0 ? opts.playerName : `Противник ${i}`,
+            color: PLAYER_COLORS[i],
+            faction: start.faction,
+            isHuman: i === 0,
+            defeated: false,
+            resources: res,
+            heroIds: [hid],
+            townIds: [tid],
+          };
+        }
+
+        set({
+          phase: 'adventure',
+          day: 1, week: 1, month: 1,
+          activePlayerId: playerOrder[0],
+          players, playerOrder, heroes, towns, map,
+          selectedHeroId: heroes[Object.keys(heroes)[0]].id,
+          selectedTownId: null,
+          options: opts,
+          log: ['Игра началась. День 1.'],
+          battle: null,
+          pendingObjectVisit: null,
+          winnerId: null,
+        });
+      },
+
+      reset: () => {
+        resetIdCounter();
+        set({ ...initialState });
+      },
+
+      selectHero: (id) => set({ selectedHeroId: id }),
+      selectTown: (id) => set({ selectedTownId: id }),
+
+      moveHeroTo: (target) => {
+        const s = get();
+        const heroId = s.selectedHeroId;
+        if (!heroId || !s.map) return 'blocked';
+        const hero = s.heroes[heroId];
+        if (!hero) return 'blocked';
+        const activePlayer = s.players[s.activePlayerId];
+        if (!activePlayer || !activePlayer.isHuman) return 'blocked';
+        if (hero.ownerId !== s.activePlayerId) return 'blocked';
+
+        const path = findPath(s.map, hero.pos, target);
+        if (!path || path.length === 0) return 'noPath';
+
+        // Идём по пути, пока хватает MP. На каждом шаге проверяем, не наступили ли на объект.
+        let mp = hero.movePoints;
+        let curPos = { ...hero.pos };
+        const newHero: Hero = { ...hero, pos: curPos, army: hero.army.map((s) => ({ ...s })) };
+        let triggered: string | null = null;
+
+        for (const step of path) {
+          const dx = Math.abs(step.x - curPos.x);
+          const dy = Math.abs(step.y - curPos.y);
+          const cost = dx !== 0 && dy !== 0 ? 141 : 100;
+          if (mp < cost) break;
+          const tile = s.map.tiles[step.y * s.map.width + step.x];
+          // Чужой герой на этой клетке — не наступаем, инициируем бой.
+          const otherHero = Object.values(s.heroes).find(
+            (h) => h.id !== hero.id && h.pos.x === step.x && h.pos.y === step.y
+          );
+          if (otherHero) {
+            if (otherHero.ownerId === hero.ownerId) break; // свой — стоп
+            // Запустить бой "герой против героя". Героя оставляем на предыдущей клетке.
+            const battle = startBattle({
+              attackerHero: newHero,
+              defenderHero: otherHero,
+              defenderObjectId: null,
+            });
+            set({
+              heroes: { ...s.heroes, [hero.id]: newHero },
+              battle,
+              phase: 'battle',
+            });
+            return 'interaction';
+          }
+          // Если на step стоит непроходимый объект — стоп; если он триггерный — запустить взаимодействие, не вступая.
+          if (tile.objectId) {
+            const obj = s.map.objects[tile.objectId];
+            const interactive = obj.kind === 'monster' || obj.kind === 'dwelling' ||
+              obj.kind === 'resource' || obj.kind === 'mine' || obj.kind === 'chest' ||
+              obj.kind === 'artifact';
+            if (!obj.passable) {
+              if (interactive) triggered = obj.id;
+              break;
+            }
+          }
+          mp -= cost;
+          curPos = { ...step };
+          newHero.pos = curPos;
+          newHero.movePoints = mp;
+          // Если на шаге есть проходимый триггерный объект — встать и сработать.
+          if (tile.objectId) {
+            const obj = s.map.objects[tile.objectId];
+            if (obj.kind !== 'tree' && obj.kind !== 'mountain') {
+              triggered = obj.id;
+              break;
+            }
+          }
+        }
+
+        const heroes = { ...s.heroes, [hero.id]: newHero };
+        set({ heroes });
+
+        if (triggered) {
+          interactWithObject(triggered);
+          return 'interaction';
+        }
+        if (newHero.movePoints < 100) return 'noPoints';
+        return 'ok';
+      },
+
+      endTurn: () => {
+        const s = get();
+        const order = s.playerOrder;
+        const curIdx = order.indexOf(s.activePlayerId);
+        let nextIdx = (curIdx + 1) % order.length;
+        // Пропустим побеждённых.
+        let safety = 0;
+        while (s.players[order[nextIdx]].defeated && safety < order.length) {
+          nextIdx = (nextIdx + 1) % order.length;
+          safety++;
+        }
+
+        // Новый день, если виток.
+        let day = s.day, week = s.week, month = s.month;
+        let log = s.log.slice();
+        if (nextIdx <= curIdx) {
+          day += 1;
+          if ((day - 1) % 7 === 0) {
+            week += 1;
+            if ((week - 1) % 4 === 0) month += 1;
+            // Прирост юнитов в городах.
+            const newTowns = applyWeeklyGrowth(s.towns);
+            set({ towns: newTowns });
+          }
+          log.push(`День ${day}.`);
+        }
+
+        // Восстановим MP всем героям следующего активного игрока и далее — но проще всем.
+        const heroes = Object.fromEntries(
+          Object.entries(get().heroes).map(([id, h]) => [id, { ...h, movePoints: h.maxMovePoints }])
+        );
+
+        // Дневной доход для всех игроков (золото от ратуш + шахты).
+        const players = applyDailyIncome(get());
+
+        // Сбросим builtToday для городов.
+        const towns = Object.fromEntries(
+          Object.entries(get().towns).map(([id, t]) => [id, { ...t, builtToday: false }])
+        );
+
+        set({
+          activePlayerId: order[nextIdx],
+          day, week, month, heroes, players, towns, log,
+        });
+
+        // Если ход теперь у ИИ — пусть он сходит и сразу передаст ход.
+        const nextPlayer = get().players[order[nextIdx]];
+        if (nextPlayer && !nextPlayer.isHuman && !nextPlayer.defeated) {
+          // Выполнить через микротаск, чтобы UI обновился.
+          setTimeout(() => runAiTurn(), 0);
+        }
+
+        // Проверка победы.
+        const alive = Object.values(get().players).filter((p) => !p.defeated);
+        if (alive.length === 1) {
+          set({ phase: 'gameOver', winnerId: alive[0].id });
+        }
+      },
+
+      openTown: (id) => set({ phase: 'town', selectedTownId: id }),
+      closeTown: () => set({ phase: 'adventure', selectedTownId: null }),
+
+      buildBuilding: (townId, buildingId) => {
+        const s = get();
+        const town = s.towns[townId];
+        if (!town || town.builtToday) return false;
+        if (town.built.includes(buildingId)) return false;
+        const def = getBuilding(town.faction, buildingId);
+        if (!def) return false;
+        if (def.prereq && !def.prereq.every((p) => town.built.includes(p))) return false;
+        const player = s.players[town.ownerId!];
+        if (!player || !canAfford(player.resources, def.cost)) return false;
+
+        const newPlayer = { ...player, resources: pay(player.resources, def.cost) };
+        const newTown: Town = {
+          ...town,
+          built: [...town.built, buildingId],
+          builtToday: true,
+          hasFort: town.hasFort || buildingId === 'fort',
+          availableUnits: { ...town.availableUnits },
+        };
+        // Если это жилище — задать прирост на сегодня.
+        if (def.produces) {
+          const unit = UNITS[def.produces];
+          newTown.availableUnits[def.produces] = (newTown.availableUnits[def.produces] ?? 0) + unit.growth;
+        }
+        set({
+          towns: { ...s.towns, [townId]: newTown },
+          players: { ...s.players, [player.id]: newPlayer },
+          log: [...s.log, `Построено: ${def.name}`],
+        });
+        return true;
+      },
+
+      hireUnits: (townId, unitId, count) => {
+        const s = get();
+        const town = s.towns[townId];
+        if (!town) return false;
+        const avail = town.availableUnits[unitId] ?? 0;
+        if (avail <= 0 || count <= 0) return false;
+        const buy = Math.min(count, avail);
+        const unit = getUnit(unitId);
+        const totalCost: Partial<ResourceBag> = {};
+        for (const k in unit.cost) {
+          const key = k as keyof ResourceBag;
+          totalCost[key] = (unit.cost[key] ?? 0) * buy;
+        }
+        const player = s.players[town.ownerId!];
+        if (!canAfford(player.resources, totalCost)) return false;
+
+        const newAvail = { ...town.availableUnits, [unitId]: avail - buy };
+        const newGarrison = addToArmy(town.garrison, unitId, buy);
+        const newTown: Town = { ...town, availableUnits: newAvail, garrison: newGarrison };
+        const newPlayer: Player = { ...player, resources: pay(player.resources, totalCost) };
+        set({
+          towns: { ...s.towns, [townId]: newTown },
+          players: { ...s.players, [player.id]: newPlayer },
+        });
+        return true;
+      },
+
+      garrisonToHero: (townId, slotIdx) => {
+        const s = get();
+        const town = s.towns[townId];
+        if (!town) return;
+        // Найти героя на этой клетке города.
+        const hero = Object.values(s.heroes).find((h) => h.pos.x === town.pos.x && h.pos.y === town.pos.y);
+        if (!hero) return;
+        const stack = town.garrison[slotIdx];
+        if (!stack) return;
+        const newHeroArmy = addToArmy(hero.army, stack.unitId, stack.count);
+        const newGarrison = town.garrison.slice();
+        newGarrison.splice(slotIdx, 1);
+        set({
+          heroes: { ...s.heroes, [hero.id]: { ...hero, army: newHeroArmy } },
+          towns: { ...s.towns, [townId]: { ...town, garrison: newGarrison } },
+        });
+      },
+
+      heroToGarrison: (heroId, slotIdx) => {
+        const s = get();
+        const hero = s.heroes[heroId];
+        if (!hero) return;
+        const tile = s.map?.tiles[hero.pos.y * (s.map?.width ?? 0) + hero.pos.x];
+        if (!tile?.objectId) return;
+        const town = s.towns[tile.objectId];
+        if (!town) return;
+        const stack = hero.army[slotIdx];
+        if (!stack) return;
+        const newGarrison = addToArmy(town.garrison, stack.unitId, stack.count);
+        const newHeroArmy = hero.army.slice();
+        newHeroArmy.splice(slotIdx, 1);
+        set({
+          heroes: { ...s.heroes, [heroId]: { ...hero, army: newHeroArmy } },
+          towns: { ...s.towns, [town.id]: { ...town, garrison: newGarrison } },
+        });
+      },
+
+      battleAct: (_action) => {
+        // Заглушка — действия игрока обрабатывает battle/engine.ts через прямой вызов.
+        // Это для будущего расширения; сейчас движок не разделяет действия.
+      },
+
+      endBattleVictory: () => {
+        const s = get();
+        const b = s.battle;
+        if (!b) return;
+        const attacker = s.heroes[b.attackerHeroId];
+        if (!attacker) { set({ battle: null, phase: 'adventure' }); return; }
+        // Применим потери к атакующему герою.
+        const newAttackerArmy = computeArmyAfterBattle(b, 'attacker', attacker.army);
+        // Удалим монстра/побеждённого защитника с карты, если был.
+        const map = s.map!;
+        const newObjects = { ...map.objects };
+        const newTiles = map.tiles.slice();
+        if (b.defenderObjectId) {
+          const obj = newObjects[b.defenderObjectId];
+          if (obj) {
+            const tileIdx = obj.pos.y * map.width + obj.pos.x;
+            newTiles[tileIdx] = { ...newTiles[tileIdx], objectId: null };
+            delete newObjects[b.defenderObjectId];
+            // Передвинем героя на эту клетку.
+            attacker.pos = { ...obj.pos };
+          }
+        }
+        let log = [...s.log, `${attacker.name} побеждает в бою!`];
+        const newHeroes = { ...s.heroes, [attacker.id]: { ...attacker, army: newAttackerArmy, pos: attacker.pos } };
+
+        // Если бой был с героем противника — обработаем защищающегося.
+        let newPlayers = s.players;
+        const newTowns = s.towns;
+        if (b.defenderHeroId) {
+          const defender = s.heroes[b.defenderHeroId];
+          if (defender) {
+            delete newHeroes[defender.id];
+            const owner = s.players[defender.ownerId];
+            const newOwner: Player = { ...owner, heroIds: owner.heroIds.filter((h) => h !== defender.id) };
+            newPlayers = { ...newPlayers, [owner.id]: newOwner };
+            log.push(`${defender.name} разгромлен.`);
+            if (newOwner.heroIds.length === 0 && newOwner.townIds.length === 0) {
+              newPlayers[owner.id] = { ...newOwner, defeated: true };
+              log.push(`${owner.name} побеждён.`);
+            }
+          }
+        }
+
+        set({
+          battle: null,
+          phase: 'adventure',
+          heroes: newHeroes,
+          map: { ...map, objects: newObjects, tiles: newTiles },
+          log,
+          players: newPlayers,
+          towns: newTowns,
+        });
+      },
+
+      endBattleDefeat: () => {
+        const s = get();
+        const b = s.battle;
+        if (!b) return;
+        const attacker = s.heroes[b.attackerHeroId];
+        if (!attacker) { set({ battle: null, phase: 'adventure' }); return; }
+        const owner = s.players[attacker.ownerId];
+        const restHeroes = { ...s.heroes };
+        delete restHeroes[attacker.id];
+        const newOwner: Player = { ...owner, heroIds: owner.heroIds.filter((h) => h !== attacker.id) };
+        let players = { ...s.players, [owner.id]: newOwner };
+        const log = [...s.log, `${attacker.name} погиб в бою.`];
+        if (newOwner.heroIds.length === 0 && newOwner.townIds.length === 0) {
+          players[owner.id] = { ...newOwner, defeated: true };
+          log.push(`${owner.name} побеждён.`);
+        }
+        set({
+          battle: null,
+          phase: 'adventure',
+          heroes: restHeroes,
+          players,
+          log,
+        });
+        // Проверка победы.
+        const alive = Object.values(get().players).filter((p) => !p.defeated);
+        if (alive.length <= 1) {
+          set({ phase: 'gameOver', winnerId: alive[0]?.id ?? null });
+        }
+      },
+    }),
+    {
+      name: 'heroes-web-save',
+      version: 1,
+      // Не сохраняем placeholders в localStorage. Сохраняем всё нужное.
+    }
+  )
+);
+
+// =================== ВСПОМОГАТЕЛЬНОЕ ===================
+
+function addToArmy(army: UnitStack[], unitId: string, count: number): UnitStack[] {
+  const out = army.map((s) => ({ ...s }));
+  const ex = out.find((s) => s.unitId === unitId);
+  if (ex) {
+    ex.count += count;
+    return out;
+  }
+  if (out.length < 7) {
+    out.push({ unitId, count });
+    return out;
+  }
+  // Армия полна — кинуть в существующий слот тот же тип, если есть, иначе игнор (для прототипа).
+  return out;
+}
+
+function applyWeeklyGrowth(towns: Record<string, Town>): Record<string, Town> {
+  const out: Record<string, Town> = {};
+  for (const [id, t] of Object.entries(towns)) {
+    const newAvail = { ...t.availableUnits };
+    for (const bId of t.built) {
+      const def = FACTION_BUILDINGS[t.faction].find((b) => b.id === bId);
+      if (def?.produces) {
+        const unit = UNITS[def.produces];
+        newAvail[def.produces] = (newAvail[def.produces] ?? 0) + unit.growth;
+      }
+    }
+    out[id] = { ...t, availableUnits: newAvail };
+  }
+  return out;
+}
+
+function applyDailyIncome(s: GameState): Record<string, Player> {
+  const players: Record<string, Player> = { ...s.players };
+  for (const pid of Object.keys(players)) {
+    const p = players[pid];
+    if (p.defeated) continue;
+    let res = { ...p.resources };
+    // Города.
+    for (const tid of p.townIds) {
+      const t = s.towns[tid];
+      if (!t) continue;
+      for (const bId of t.built) {
+        const def = FACTION_BUILDINGS[t.faction].find((b) => b.id === bId);
+        if (def?.givesGoldPerDay) res.gold += def.givesGoldPerDay;
+      }
+    }
+    // Шахты — посмотреть все объекты карты, принадлежащие игроку.
+    if (s.map) {
+      for (const obj of Object.values(s.map.objects)) {
+        if (obj.kind === 'mine' && obj.ownerId === pid && obj.mineResource && obj.mineYield) {
+          res = add(res, { [obj.mineResource]: obj.mineYield } as Partial<ResourceBag>);
+        }
+      }
+    }
+    players[pid] = { ...p, resources: res };
+  }
+  return players;
+}
+
+function computeArmyAfterBattle(b: BattleState, side: 'attacker' | 'defender', original: UnitStack[]): UnitStack[] {
+  // Сопоставим стэки боя с исходной армией по порядку.
+  const sideStacks = b.stacks.filter((s) => s.side === side);
+  const out: UnitStack[] = [];
+  for (let i = 0; i < original.length; i++) {
+    const bs = sideStacks[i];
+    if (!bs || bs.count <= 0) continue;
+    out.push({ unitId: original[i].unitId, count: bs.count });
+  }
+  return out;
+}
+
+// =================== ВЗАИМОДЕЙСТВИЕ С ОБЪЕКТАМИ ===================
+
+function interactWithObject(objId: string) {
+  const s = useGame.getState();
+  if (!s.map) return;
+  const obj = s.map.objects[objId];
+  if (!obj) return;
+  const hero = Object.values(s.heroes).find(
+    (h) => h.ownerId === s.activePlayerId && h.pos.x === obj.pos.x && h.pos.y === obj.pos.y
+  );
+
+  if (obj.kind === 'resource' && obj.resource) {
+    if (!hero) return;
+    const player = s.players[hero.ownerId];
+    const newResources = add(player.resources, { [obj.resource]: obj.amount ?? 0 } as Partial<ResourceBag>);
+    const newObjects = { ...s.map.objects };
+    delete newObjects[obj.id];
+    const newTiles = s.map.tiles.slice();
+    newTiles[obj.pos.y * s.map.width + obj.pos.x] = { ...newTiles[obj.pos.y * s.map.width + obj.pos.x], objectId: null };
+    useGame.setState({
+      players: { ...s.players, [player.id]: { ...player, resources: newResources } },
+      map: { ...s.map, objects: newObjects, tiles: newTiles },
+      log: [...s.log, `Подобрано: ${obj.amount} ${RESOURCE_NAMES[obj.resource]}`],
+    });
+    return;
+  }
+
+  if (obj.kind === 'chest') {
+    if (!hero) return;
+    const player = s.players[hero.ownerId];
+    const gold = obj.goldAmount ?? 1000;
+    const newResources = { ...player.resources, gold: player.resources.gold + gold };
+    const newObjects = { ...s.map.objects };
+    delete newObjects[obj.id];
+    const newTiles = s.map.tiles.slice();
+    newTiles[obj.pos.y * s.map.width + obj.pos.x] = { ...newTiles[obj.pos.y * s.map.width + obj.pos.x], objectId: null };
+    useGame.setState({
+      players: { ...s.players, [player.id]: { ...player, resources: newResources } },
+      map: { ...s.map, objects: newObjects, tiles: newTiles },
+      log: [...s.log, `Сундук: +${gold} золота`],
+    });
+    return;
+  }
+
+  if (obj.kind === 'mine' && obj.mineResource) {
+    if (!hero) return;
+    if (obj.ownerId === hero.ownerId) return;
+    const newObjects = { ...s.map.objects, [obj.id]: { ...obj, ownerId: hero.ownerId } };
+    useGame.setState({
+      map: { ...s.map, objects: newObjects },
+      log: [...s.log, `Шахта (${RESOURCE_NAMES[obj.mineResource]}) захвачена`],
+    });
+    return;
+  }
+
+  if (obj.kind === 'monster' && obj.unitId && obj.unitCount) {
+    if (!hero) return;
+    // Запустить бой.
+    const battle = startBattle({
+      attackerHero: hero,
+      defenderHero: null,
+      defenderObjectId: obj.id,
+      defenderArmy: [{ unitId: obj.unitId, count: obj.unitCount }],
+    });
+    useGame.setState({ battle, phase: 'battle' });
+    return;
+  }
+
+  if (obj.kind === 'dwelling') {
+    // Это город.
+    const town = s.towns[obj.id];
+    if (!town) return;
+    if (town.ownerId === s.activePlayerId) {
+      // Свой город — открыть UI только если за игрока-человека.
+      if (s.players[s.activePlayerId]?.isHuman) {
+        useGame.setState({ phase: 'town', selectedTownId: town.id });
+      }
+    } else if (hero) {
+      // Захват пустого города или бой с гарнизоном.
+      if (town.garrison.length === 0) {
+        captureTown(town.id, hero.ownerId);
+      } else {
+        // Бой с гарнизоном (нет защищающегося героя).
+        const battle = startBattle({
+          attackerHero: hero,
+          defenderHero: null,
+          defenderObjectId: town.id,
+          defenderArmy: town.garrison,
+        });
+        useGame.setState({ battle, phase: 'battle' });
+      }
+    }
+    return;
+  }
+}
+
+function captureTown(townId: string, newOwnerId: string) {
+  const s = useGame.getState();
+  const town = s.towns[townId];
+  if (!town) return;
+  let players = { ...s.players };
+  if (town.ownerId) {
+    const oldOwner = players[town.ownerId];
+    players[town.ownerId] = { ...oldOwner, townIds: oldOwner.townIds.filter((t) => t !== townId) };
+  }
+  const newOwner = players[newOwnerId];
+  players[newOwnerId] = { ...newOwner, townIds: [...newOwner.townIds, townId] };
+  const newTown: Town = { ...town, ownerId: newOwnerId };
+  const map = s.map!;
+  const newObjects = { ...map.objects, [townId]: { ...map.objects[townId], ownerId: newOwnerId } };
+  useGame.setState({
+    players,
+    towns: { ...s.towns, [townId]: newTown },
+    map: { ...map, objects: newObjects },
+    log: [...s.log, `Город "${town.name}" захвачен!`],
+  });
+  // Проверка победы — если у предыдущего владельца не осталось ни городов, ни героев.
+  if (town.ownerId) {
+    const old = useGame.getState().players[town.ownerId];
+    if (old.heroIds.length === 0 && old.townIds.length === 0 && !old.defeated) {
+      useGame.setState({
+        players: { ...useGame.getState().players, [town.ownerId]: { ...old, defeated: true } },
+        log: [...useGame.getState().log, `${old.name} побеждён.`],
+      });
+    }
+  }
+  const alive = Object.values(useGame.getState().players).filter((p) => !p.defeated);
+  if (alive.length === 1) {
+    useGame.setState({ phase: 'gameOver', winnerId: alive[0].id });
+  }
+}
+
+// =================== ИИ КАРТЫ ===================
+
+function runAiTurn() {
+  const game = useGame.getState();
+  const pid = game.activePlayerId;
+  const player = game.players[pid];
+  if (!player || player.isHuman || player.defeated) {
+    if (!useGame.getState().battle) useGame.getState().endTurn();
+    return;
+  }
+  // 1) Постройка в каждом городе одной постройки, если возможно.
+  for (const tid of player.townIds) {
+    const town = useGame.getState().towns[tid];
+    if (!town || town.builtToday) continue;
+    const candidates = FACTION_BUILDINGS[town.faction]
+      .filter((b) => !town.built.includes(b.id))
+      .filter((b) => !b.prereq || b.prereq.every((p) => town.built.includes(p)))
+      .filter((b) => canAfford(useGame.getState().players[pid].resources, b.cost));
+    // Приоритет: жилища, потом ратуши, форт.
+    const order: typeof candidates = [
+      ...candidates.filter((b) => b.id === 'fort'),
+      ...candidates.filter((b) => b.produces),
+      ...candidates.filter((b) => b.givesGoldPerDay),
+      ...candidates.filter((b) => !b.produces && !b.givesGoldPerDay),
+    ];
+    if (order[0]) useGame.getState().buildBuilding(tid, order[0].id);
+  }
+  // 2) Найм всех доступных юнитов в каждом городе.
+  for (const tid of player.townIds) {
+    const town = useGame.getState().towns[tid];
+    if (!town) continue;
+    for (const [unitId, count] of Object.entries(town.availableUnits)) {
+      if (count > 0) useGame.getState().hireUnits(tid, unitId, count);
+    }
+    // Передать гарнизон герою, если он на клетке города и есть гарнизон.
+    const tw = useGame.getState().towns[tid];
+    const hero = Object.values(useGame.getState().heroes).find(
+      (h) => h.ownerId === pid && h.pos.x === tw.pos.x && h.pos.y === tw.pos.y
+    );
+    if (hero) {
+      while (useGame.getState().towns[tid].garrison.length > 0) {
+        useGame.getState().garrisonToHero(tid, 0);
+      }
+    }
+  }
+  // 3) Движение героев. Простая логика: идти к ближайшему ресурсу/шахте/городу/герою противника.
+  const heroIds = useGame.getState().players[pid].heroIds.slice();
+  for (const hid of heroIds) {
+    if (useGame.getState().battle) return; // если ИИ ввязался в бой — выходим.
+    let hero = useGame.getState().heroes[hid];
+    if (!hero) continue;
+    // Цикл хождения, пока есть MP.
+    for (let i = 0; i < 6; i++) {
+      hero = useGame.getState().heroes[hid];
+      if (!hero || hero.movePoints < 100) break;
+      const target = pickAiTarget(hero);
+      if (!target) break;
+      const map = useGame.getState().map!;
+      const path = findPath(map, hero.pos, target);
+      if (!path || path.length === 0) break;
+      // Будем идти по path по тайлам, пока хватает MP или не встретим объект.
+      moveAiHero(hid, target);
+      if (useGame.getState().battle) return;
+    }
+  }
+  // Закончить ход.
+  if (!useGame.getState().battle) {
+    setTimeout(() => useGame.getState().endTurn(), 50);
+  }
+}
+
+function pickAiTarget(hero: Hero): Coord | null {
+  const s = useGame.getState();
+  if (!s.map) return null;
+  let best: { d: number; pos: Coord } | null = null;
+  // Кандидаты: ресурсы, не-свои шахты, города не-свои, герои других игроков.
+  for (const obj of Object.values(s.map.objects)) {
+    if (obj.kind === 'resource' || obj.kind === 'chest') {
+      const d = chebyshev(hero.pos, obj.pos);
+      if (!best || d < best.d) best = { d, pos: obj.pos };
+    } else if (obj.kind === 'mine' && obj.ownerId !== hero.ownerId) {
+      const d = chebyshev(hero.pos, obj.pos) + 2;
+      if (!best || d < best.d) best = { d, pos: obj.pos };
+    } else if (obj.kind === 'dwelling' && obj.ownerId !== hero.ownerId) {
+      const d = chebyshev(hero.pos, obj.pos) + 5;
+      if (!best || d < best.d) best = { d, pos: obj.pos };
+    } else if (obj.kind === 'monster') {
+      const monsterUnit = UNITS[obj.unitId!];
+      const monsterPower = monsterUnit.hp * (obj.unitCount ?? 0);
+      const heroPower = hero.army.reduce((acc, st) => acc + UNITS[st.unitId].hp * st.count, 0);
+      if (heroPower > monsterPower * 1.5) {
+        const d = chebyshev(hero.pos, obj.pos) + 1;
+        if (!best || d < best.d) best = { d, pos: obj.pos };
+      }
+    }
+  }
+  return best?.pos ?? null;
+}
+
+function moveAiHero(heroId: string, target: Coord) {
+  const s = useGame.getState();
+  const hero = s.heroes[heroId];
+  if (!s.map || !hero) return;
+  const path = findPath(s.map, hero.pos, target);
+  if (!path) return;
+  let mp = hero.movePoints;
+  let curPos = { ...hero.pos };
+  let triggered: string | null = null;
+  let battleWithHero: string | null = null;
+  for (const step of path) {
+    const dx = Math.abs(step.x - curPos.x);
+    const dy = Math.abs(step.y - curPos.y);
+    const cost = dx !== 0 && dy !== 0 ? 141 : 100;
+    if (mp < cost) break;
+    const otherHero = Object.values(s.heroes).find(
+      (h) => h.id !== hero.id && h.pos.x === step.x && h.pos.y === step.y
+    );
+    if (otherHero) {
+      if (otherHero.ownerId === hero.ownerId) break;
+      battleWithHero = otherHero.id;
+      break;
+    }
+    const tile = s.map.tiles[step.y * s.map.width + step.x];
+    if (tile.objectId) {
+      const obj = s.map.objects[tile.objectId];
+      const interactive = obj.kind === 'monster' || obj.kind === 'dwelling' ||
+        obj.kind === 'resource' || obj.kind === 'mine' || obj.kind === 'chest' ||
+        obj.kind === 'artifact';
+      if (!obj.passable) {
+        if (interactive) triggered = obj.id;
+        break;
+      }
+    }
+    mp -= cost;
+    curPos = { ...step };
+    if (tile.objectId) {
+      const obj = s.map.objects[tile.objectId];
+      if (obj.kind !== 'tree' && obj.kind !== 'mountain') {
+        triggered = obj.id;
+        break;
+      }
+    }
+  }
+  useGame.setState({
+    heroes: { ...useGame.getState().heroes, [heroId]: { ...hero, pos: curPos, movePoints: mp } },
+  });
+  if (battleWithHero) {
+    const defender = useGame.getState().heroes[battleWithHero];
+    if (defender) {
+      const attacker = useGame.getState().heroes[heroId];
+      const battle = startBattle({ attackerHero: attacker, defenderHero: defender, defenderObjectId: null });
+      useGame.setState({ battle, phase: 'battle' });
+      runAiBattle();
+    }
+    return;
+  }
+  if (triggered) {
+    interactWithObject(triggered);
+    if (useGame.getState().battle) runAiBattle();
+  }
+}
+
+function runAiBattle() {
+  // ИИ играет за обе стороны, когда атакующий — ИИ.
+  let safety = 0;
+  while (useGame.getState().battle && safety < 200) {
+    safety++;
+    const result = stepBattleAI(useGame.getState().battle!);
+    useGame.setState({ battle: result.battle });
+    const over = isBattleOver(result.battle);
+    if (over) {
+      if (over === 'attacker') useGame.getState().endBattleVictory();
+      else useGame.getState().endBattleDefeat();
+      break;
+    }
+  }
+}
+
+// Экспорт для использования из UI: возможность вручную проводить шаг боя.
+export { interactWithObject };
