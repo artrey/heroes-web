@@ -414,6 +414,13 @@ function drawMap(
         ctx.fillRect(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4);
       }
       drawEmoji(ctx, obj.icon, sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, 24);
+    } else if (obj.kind === "mine") {
+      // Захваченную шахту красим в цвет владельца, как город.
+      if (obj.ownerId) {
+        ctx.fillStyle = players[obj.ownerId]?.color ?? "#888";
+        ctx.fillRect(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+      }
+      drawEmoji(ctx, obj.icon, sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, 22);
     } else {
       drawEmoji(ctx, obj.icon, sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, 22);
     }
@@ -527,12 +534,18 @@ function drawMinimap(
       }
     }
   }
-  // Города и герои на минимапе — с учётом тумана.
+  // Города, шахты и герои на минимапе — с учётом тумана.
   for (const tw of Object.values(towns)) {
     if (revealed[`${tw.pos.x},${tw.pos.y}`] !== true) continue;
     const owner = tw.ownerId ? (players[tw.ownerId]?.color ?? "#fff") : "#999";
     ctx.fillStyle = owner;
     ctx.fillRect(ox + tw.pos.x * px - 1, oy + tw.pos.y * px - 1, px + 2, px + 2);
+  }
+  for (const obj of Object.values(map.objects)) {
+    if (obj.kind !== "mine" || !obj.ownerId) continue;
+    if (revealed[`${obj.pos.x},${obj.pos.y}`] !== true) continue;
+    ctx.fillStyle = players[obj.ownerId]?.color ?? "#fff";
+    ctx.fillRect(ox + obj.pos.x * px, oy + obj.pos.y * px, px, px);
   }
   for (const h of Object.values(heroes)) {
     if (!visible.has(`${h.pos.x},${h.pos.y}`)) continue;
