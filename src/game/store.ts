@@ -5,6 +5,7 @@ import { isBattleOver, startBattle, stepBattleAI } from "./battle/engine";
 import { ARTIFACTS, getArtifact } from "./data/artifacts";
 import { FACTION_BUILDINGS, getBuilding } from "./data/buildings";
 import { pickHeroProto } from "./data/heroes";
+import { reverseRate } from "./data/marketRates";
 import { FACTION_UNIT_ORDER, getUnit, UNITS } from "./data/units";
 import { generateMap } from "./map/generate";
 import type {
@@ -18,6 +19,7 @@ import type {
   MapObject,
   NewGameOptions,
   Player,
+  Resource,
   ResourceBag,
   Town,
   UnitStack,
@@ -112,6 +114,7 @@ interface Actions {
   buildBuilding: (townId: string, buildingId: string) => boolean;
   hireUnits: (townId: string, unitId: string, count: number) => boolean;
   hireHero: (townId: string) => boolean;
+  tradeResource: (townId: string, from: Resource, to: Resource, fromQty: number) => boolean;
   garrisonToHero: (townId: string, slotIdx: number) => void;
   heroToGarrison: (heroId: string, slotIdx: number) => void;
   openHeroMeeting: (otherHeroId: string) => boolean;
@@ -554,6 +557,26 @@ export const useGame = create<GameState & Actions>()(
           players: { ...s.players, [player.id]: revealedOwner },
           log: [...s.log, logLine(s.day, `Нанят герой: ${hero.name}`)],
           selectedHeroId: hid,
+        });
+        return true;
+      },
+
+      tradeResource: (townId, from, to, fromQty) => {
+        const s = get();
+        const town = s.towns[townId];
+        if (!town || !town.ownerId) return false;
+        if (!town.built.includes("marketplace")) return false;
+        if (fromQty <= 0 || from === to) return false;
+        const player = s.players[town.ownerId];
+        if ((player.resources[from] ?? 0) < fromQty) return false;
+        const toQty = reverseRate(from, to, fromQty);
+        if (toQty <= 0) return false;
+        const newRes = { ...player.resources };
+        newRes[from] -= fromQty;
+        newRes[to] += toQty;
+        set({
+          players: { ...s.players, [player.id]: { ...player, resources: newRes } },
+          log: [...s.log, logLine(s.day, `Рынок: ${fromQty} ${RESOURCE_NAMES[from]} → ${toQty} ${RESOURCE_NAMES[to]}`)],
         });
         return true;
       },
