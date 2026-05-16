@@ -120,30 +120,34 @@ export function AdventureScreen() {
   function handleClick(ev: React.MouseEvent) {
     const t = clickToTile(ev);
     if (!t) return;
-    // Клик по тайлу: если герой свой — выбрать; если город свой — открыть; иначе — двигать.
     const tile = map!.tiles[t.y * map!.width + t.x];
+    const selectedHero = selectedHeroId ? heroes[selectedHeroId] : null;
+    const canMoveSelected = selectedHero && selectedHero.ownerId === activePlayerId;
+
     if (tile.objectId) {
-      // Герой?
+      // Клик по своему герою — выбрать.
       const heroHere = Object.values(heroes).find(h => h.pos.x === t.x && h.pos.y === t.y);
       if (heroHere && heroHere.ownerId === activePlayerId) {
         selectHero(heroHere.id);
         return;
       }
-      // Свой город?
+      // Клик по своему городу.
       const tw = towns[tile.objectId];
       if (tw && tw.ownerId === activePlayerId) {
-        // Если на клетке есть свой герой, или нет — всё равно открываем.
+        const heroOnTown = selectedHero && selectedHero.pos.x === tw.pos.x && selectedHero.pos.y === tw.pos.y;
+        // Если выбран герой и он ещё не в этом городе — двигаемся к городу;
+        // при входе на клетку UI откроется автоматически из interactWithObject.
+        if (canMoveSelected && !heroOnTown) {
+          moveHeroTo(t);
+          return;
+        }
+        // Иначе (нет выбранного героя или он уже в городе) — открываем UI напрямую.
         openTown(tw.id);
         return;
       }
     }
-    // Двинуть выбранного героя.
-    if (selectedHeroId) {
-      const hero = heroes[selectedHeroId];
-      if (hero && hero.ownerId === activePlayerId) {
-        moveHeroTo(t);
-      }
-    }
+    // Любая другая клетка — двигаем выбранного героя.
+    if (canMoveSelected) moveHeroTo(t);
   }
 
   // Прокрутка карты колесом / клавишами.
