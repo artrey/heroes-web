@@ -165,7 +165,7 @@ export function AdventureScreen() {
       setHoverPath(null);
       return;
     }
-    const path = findPath(map!, hero.pos, t);
+    const path = findPath(map!, hero.pos, t, { revealed });
     setHoverPath(path);
   }
 

@@ -296,7 +296,7 @@ export const useGame = create<GameState & Actions>()(
         if (!activePlayer || !activePlayer.isHuman) return "blocked";
         if (hero.ownerId !== s.activePlayerId) return "blocked";
 
-        const path = findPath(s.map, hero.pos, target);
+        const path = findPath(s.map, hero.pos, target, { revealed: activePlayer.revealed });
         if (!path || path.length === 0) return "noPath";
 
         // Идём по пути, пока хватает MP. На каждом шаге проверяем, не наступили ли на объект.

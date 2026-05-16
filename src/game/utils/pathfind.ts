@@ -55,8 +55,20 @@ export function isPassable(map: GameMap, x: number, y: number, allowGoalObject =
   return true;
 }
 
-export function findPath(map: GameMap, start: Coord, goal: Coord): Coord[] | null {
+export interface PathOptions {
+  // Если задан — путь проходит только по тайлам, для которых revealed[key] === true.
+  // Цель тоже должна быть видна; иначе путь не строится.
+  revealed?: Record<string, true>;
+  // Клетки «зоны контроля» (соседи монстров/враждебных героев). Их можно использовать
+  // только как цель пути, но не как промежуточный шаг.
+  dangerCells?: Set<string>;
+}
+
+export function findPath(map: GameMap, start: Coord, goal: Coord, options: PathOptions = {}): Coord[] | null {
   if (start.x === goal.x && start.y === goal.y) return [];
+  const { revealed, dangerCells } = options;
+  const goalKey = `${goal.x},${goal.y}`;
+  if (revealed && revealed[goalKey] !== true) return null;
   const startNode: Node = {
     x: start.x,
     y: start.y,
@@ -96,6 +108,9 @@ export function findPath(map: GameMap, start: Coord, goal: Coord): Coord[] | nul
       const nk = key(nx, ny);
       if (closed.has(nk)) continue;
       if (!isPassable(map, nx, ny, true, goal)) continue;
+      if (revealed && revealed[nk] !== true) continue;
+      // Danger-cell можно использовать только как конечную точку.
+      if (dangerCells && dangerCells.has(nk) && nk !== goalKey) continue;
       const g = cur.g + stepCost(dx, dy);
       const existing = openMap.get(nk);
       if (existing && existing.g <= g) continue;
