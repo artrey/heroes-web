@@ -118,6 +118,23 @@ export function findPath(map: GameMap, start: Coord, goal: Coord, options: PathO
       if (revealed && revealed[nk] !== true) continue;
       // Danger cells полностью запрещены, кроме случая, когда мы идём атаковать сам источник.
       if (effectiveDanger && effectiveDanger.has(nk)) continue;
+      // Интерактивные объекты (ресурсы/сундуки/артефакты/шахты/города/монстры) можно
+      // использовать только как явную цель пути. Иначе герой автоматически бы их «собирал»,
+      // двигаясь сквозь — это и есть баг автоподбора по пути.
+      const tile = map.tiles[ny * map.width + nx];
+      if (tile.objectId && nk !== goalKey) {
+        const obj = map.objects[tile.objectId];
+        if (
+          obj.kind === "resource" ||
+          obj.kind === "chest" ||
+          obj.kind === "artifact" ||
+          obj.kind === "mine" ||
+          obj.kind === "dwelling" ||
+          obj.kind === "monster"
+        ) {
+          continue;
+        }
+      }
       const g = cur.g + stepCost(dx, dy);
       const existing = openMap.get(nk);
       if (existing && existing.g <= g) continue;
