@@ -289,7 +289,7 @@ export const useGame = create<GameState & Actions>()(
         set({ heroes });
 
         if (triggered) {
-          interactWithObject(triggered);
+          interactWithObject(triggered, hero.id);
           return "interaction";
         }
         if (newHero.movePoints < 100) return "noPoints";
@@ -640,14 +640,19 @@ function computeArmyAfterBattle(b: BattleState, side: "attacker" | "defender", o
 
 // =================== ВЗАИМОДЕЙСТВИЕ С ОБЪЕКТАМИ ===================
 
-function interactWithObject(objId: string) {
+function interactWithObject(objId: string, heroId?: string) {
   const s = useGame.getState();
   if (!s.map) return;
   const obj = s.map.objects[objId];
   if (!obj) return;
-  const hero = Object.values(s.heroes).find(
-    h => h.ownerId === s.activePlayerId && h.pos.x === obj.pos.x && h.pos.y === obj.pos.y,
-  );
+  // Героя берём явно, если передан (он мог остановиться на соседней клетке —
+  // например, перед монстром, на которого нельзя вступать).
+  // Иначе — fallback: ищем героя на клетке объекта.
+  const hero = heroId
+    ? s.heroes[heroId]
+    : Object.values(s.heroes).find(
+        h => h.ownerId === s.activePlayerId && h.pos.x === obj.pos.x && h.pos.y === obj.pos.y,
+      );
 
   if (obj.kind === "resource" && obj.resource) {
     if (!hero) return;
@@ -935,7 +940,7 @@ function moveAiHero(heroId: string, target: Coord) {
     return;
   }
   if (triggered) {
-    interactWithObject(triggered);
+    interactWithObject(triggered, heroId);
     if (useGame.getState().battle) runAiBattle();
   }
 }
