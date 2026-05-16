@@ -64,7 +64,20 @@ export function TownScreen() {
 
       <div className="town-content">
         <div className="town-main">
-          <h1 className="town-title">Постройки</h1>
+          <h1 className="town-title">
+            Постройки{" "}
+            <span
+              style={{
+                fontSize: 14,
+                marginLeft: 12,
+                color: town.builtToday ? "var(--text-dim)" : "var(--good)",
+                fontStyle: "italic",
+                fontWeight: "normal",
+              }}
+            >
+              {town.builtToday ? "✓ Сегодня уже построено — следующее завтра" : "🔨 Можно построить одно здание"}
+            </span>
+          </h1>
           <div className="buildings-grid">
             {buildings.map(b => {
               const built = town.built.includes(b.id);
