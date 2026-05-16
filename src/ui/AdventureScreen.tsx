@@ -5,7 +5,7 @@ import { ARTIFACTS as ARTIFACTS_LOCAL } from "../game/data/artifacts";
 import { UNITS as UNITS_LOCAL } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
-import { findPath, isPassable } from "../game/utils/pathfind";
+import { findPath, isPassable, pathCost, STEP_STRAIGHT, stepCost } from "../game/utils/pathfind";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { computeVisibleTiles } from "../game/utils/visibility";
 
@@ -257,6 +257,12 @@ export function AdventureScreen() {
             isVisibleNow={visible.has(`${hoverTile.x},${hoverTile.y}`)}
           />
         )}
+        {hoverPath && hoverPath.length > 0 && selectedHeroId && heroes[selectedHeroId] && (
+          <PathCostBadge
+            total={pathCost(hoverPath, heroes[selectedHeroId].pos)}
+            mp={heroes[selectedHeroId].movePoints}
+          />
+        )}
       </div>
 
       <div className="side-panel">
@@ -274,7 +280,7 @@ export function AdventureScreen() {
               <span className="icon">{h.icon}</span>
               <div style={{ flex: 1 }}>
                 <div className="name">{h.name}</div>
-                <div className="mp">⚡ {Math.floor(h.movePoints / 100)} ходов</div>
+                <div className="mp">⚡ {h.movePoints} MP</div>
               </div>
               <button
                 onClick={e => {
@@ -447,7 +453,7 @@ function drawMap(
       for (const p of hoverPath) {
         const dx = Math.abs(p.x - prev.x);
         const dy = Math.abs(p.y - prev.y);
-        const cost = dx !== 0 && dy !== 0 ? 141 : 100;
+        const cost = stepCost(dx, dy);
         const reachable = mp >= cost;
         mp -= cost;
         const sx = p.x * TILE_SIZE - camera.x + TILE_SIZE / 2;
@@ -540,6 +546,15 @@ function drawMinimap(
   const vh = Math.floor((ch / TILE_SIZE) * px);
   ctx.strokeStyle = "#ffd966";
   ctx.strokeRect(vx, vy, Math.min(vw, mmW - (vx - ox)), Math.min(vh, mmH - (vy - oy)));
+}
+
+function PathCostBadge({ total, mp }: { total: number; mp: number }) {
+  const enough = total <= mp;
+  return (
+    <div className="path-cost-badge" style={{ color: enough ? "var(--gold)" : "var(--danger)" }}>
+      Путь: {total} MP <span style={{ color: "var(--text-dim)" }}>(доступно {mp})</span>
+    </div>
+  );
 }
 
 function MapTooltip({

@@ -254,6 +254,20 @@ select {
   display: block;
   cursor: pointer;
 }
+.path-cost-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  background: rgba(20, 14, 10, 0.92);
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  border-radius: 3px;
+  font-size: 13px;
+  z-index: 40;
+  pointer-events: none;
+  letter-spacing: 0.5px;
+}
 .map-tooltip {
   position: absolute;
   pointer-events: none;

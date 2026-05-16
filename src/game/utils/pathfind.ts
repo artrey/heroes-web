@@ -3,6 +3,15 @@ import type { Coord, GameMap } from "../types";
 // Стандартный A* для 8-связной сетки. Возвращает массив координат от старта (не включая) до цели.
 // Если путь не найден — возвращает null.
 
+// Стоимость шагов в очках движения героя. Прямая клетка — 100,
+// диагональ — round(100 * √2) = 141.
+export const STEP_STRAIGHT = 100;
+export const STEP_DIAG = Math.round(STEP_STRAIGHT * Math.SQRT2);
+
+export function stepCost(dx: number, dy: number): number {
+  return dx !== 0 && dy !== 0 ? STEP_DIAG : STEP_STRAIGHT;
+}
+
 interface Node {
   x: number;
   y: number;
@@ -27,13 +36,10 @@ function key(x: number, y: number) {
 }
 
 function heuristic(ax: number, ay: number, bx: number, by: number) {
+  // Octile distance в тех же единицах, что и stepCost (MP).
   const dx = Math.abs(ax - bx);
   const dy = Math.abs(ay - by);
-  return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
-}
-
-function stepCost(dx: number, dy: number) {
-  return dx !== 0 && dy !== 0 ? 1.414 : 1;
+  return STEP_STRAIGHT * Math.max(dx, dy) + (STEP_DIAG - STEP_STRAIGHT) * Math.min(dx, dy);
 }
 
 export function isPassable(map: GameMap, x: number, y: number, allowGoalObject = false, goal?: Coord): boolean {
@@ -114,7 +120,7 @@ export function pathCost(path: Coord[], start: Coord): number {
   for (const p of path) {
     const dx = Math.abs(p.x - prev.x);
     const dy = Math.abs(p.y - prev.y);
-    cost += dx !== 0 && dy !== 0 ? 141 : 100; // 100 MP за прямой шаг, ~141 за диагональ
+    cost += stepCost(dx, dy);
     prev = p;
   }
   return cost;

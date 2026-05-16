@@ -26,7 +26,7 @@ import { VISION_RADIUS_HERO, VISION_RADIUS_TOWN } from "./types";
 import { getEffectiveMaxMP } from "./utils/heroBonus";
 import { makeId, resetIdCounter } from "./utils/id";
 import { levelFromXp } from "./utils/leveling";
-import { chebyshev, findPath, isPassable, pathCost } from "./utils/pathfind";
+import { chebyshev, findPath, isPassable, pathCost, STEP_STRAIGHT, stepCost } from "./utils/pathfind";
 import { add, canAfford, emptyBag, pay, RESOURCE_NAMES } from "./utils/resources";
 import { mulberry32, randChoice, randInt } from "./utils/rng";
 import { fullyRevealed, revealForPlayer } from "./utils/visibility";
@@ -305,7 +305,7 @@ export const useGame = create<GameState & Actions>()(
         for (const step of path) {
           const dx = Math.abs(step.x - curPos.x);
           const dy = Math.abs(step.y - curPos.y);
-          const cost = dx !== 0 && dy !== 0 ? 141 : 100;
+          const cost = stepCost(dx, dy);
           if (mp < cost) break;
           const tile = s.map.tiles[step.y * s.map.width + step.x];
           // Чужой герой на этой клетке — не наступаем, инициируем бой.
@@ -372,7 +372,7 @@ export const useGame = create<GameState & Actions>()(
           interactWithObject(triggered, hero.id);
           return "interaction";
         }
-        if (newHero.movePoints < 100) return "noPoints";
+        if (newHero.movePoints < STEP_STRAIGHT) return "noPoints";
         return "ok";
       },
 
@@ -1255,7 +1255,7 @@ function runAiTurn() {
     // Цикл хождения, пока есть MP.
     for (let i = 0; i < 6; i++) {
       hero = useGame.getState().heroes[hid];
-      if (!hero || hero.movePoints < 100) break;
+      if (!hero || hero.movePoints < STEP_STRAIGHT) break;
       const target = pickAiTarget(hero);
       if (!target) break;
       const map = useGame.getState().map!;
@@ -1313,7 +1313,7 @@ function moveAiHero(heroId: string, target: Coord) {
   for (const step of path) {
     const dx = Math.abs(step.x - curPos.x);
     const dy = Math.abs(step.y - curPos.y);
-    const cost = dx !== 0 && dy !== 0 ? 141 : 100;
+    const cost = stepCost(dx, dy);
     if (mp < cost) break;
     const otherHero = Object.values(s.heroes).find(h => h.id !== hero.id && h.pos.x === step.x && h.pos.y === step.y);
     if (otherHero) {

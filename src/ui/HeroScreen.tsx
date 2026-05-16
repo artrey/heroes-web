@@ -87,7 +87,7 @@ export function HeroScreen() {
             <div className="stat-row">
               <span>⚡ Очки движения</span>
               <span>
-                {Math.floor(hero.movePoints / 100)} / {Math.floor(effMaxMP / 100)}
+                {hero.movePoints} / {effMaxMP} MP
               </span>
             </div>
             <div className="stat-row">
