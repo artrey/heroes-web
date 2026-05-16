@@ -39,6 +39,7 @@ const attacker: Hero = {
   artifacts: { equipped: {}, backpack: [] },
   level: 1,
   xp: 0,
+  statBonus: { attack: 0, defense: 0 },
   icon: "🤴",
 };
 const defender: Hero = {

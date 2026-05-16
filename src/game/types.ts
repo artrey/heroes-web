@@ -80,6 +80,7 @@ export interface Hero {
   artifacts: HeroArtifacts;
   level: number;
   xp: number;
+  statBonus: { attack: number; defense: number };
   icon: string;
 }
 
@@ -190,6 +191,7 @@ export interface BattleState {
   defenderArmy?: UnitStack[]; // если нет героя
   attackerBonus: HeroBonus;
   defenderBonus: HeroBonus;
+  xpReward: number; // опыт атакеру за победу
   stacks: BattleStack[];
   turnOrder: string[]; // id stacks по инициативе
   activeStackIdx: number;

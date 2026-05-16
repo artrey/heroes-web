@@ -6,6 +6,7 @@ import { useGame } from "../game/store";
 import type { ArtifactSlot } from "../game/types";
 import { ARTIFACT_SLOT_ORDER } from "../game/types";
 import { getEffectiveMaxMP, getHeroBonus } from "../game/utils/heroBonus";
+import { xpToNextLevel } from "../game/utils/leveling";
 
 type Selected =
   | { kind: "army"; slot: number }
@@ -91,19 +92,42 @@ export function HeroScreen() {
             </div>
             <div className="stat-row">
               <span>⭐ Опыт</span>
-              <span>{hero.xp}</span>
+              <span>
+                {hero.xp} (до ур. {hero.level + 1}: {xpToNextLevel(hero.xp)})
+              </span>
+            </div>
+            <div className="stat-row">
+              <span>⚔️ База атаки (от уровней)</span>
+              <span>+{hero.statBonus.attack}</span>
+            </div>
+            <div className="stat-row">
+              <span>🛡️ База защиты (от уровней)</span>
+              <span>+{hero.statBonus.defense}</span>
             </div>
             <div className="stat-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}>
               <span style={{ color: "var(--text-dim)" }}>Бонусы от экипировки:</span>
             </div>
-            {bonus.attack ? <BonusRow label="⚔️ Атака" value={`+${bonus.attack}`} /> : null}
-            {bonus.defense ? <BonusRow label="🛡️ Защита" value={`+${bonus.defense}`} /> : null}
-            {bonus.speed ? <BonusRow label="🏃 Скорость" value={`+${bonus.speed}`} /> : null}
-            {bonus.hpBonus ? <BonusRow label="❤️ HP" value={`+${bonus.hpBonus}`} /> : null}
-            {bonus.movement ? <BonusRow label="🥾 Доп. MP" value={`+${bonus.movement}`} /> : null}
-            {bonus.attack + bonus.defense + bonus.speed + bonus.hpBonus + bonus.movement === 0 && (
-              <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>—</div>
-            )}
+            {(() => {
+              // Бонусы от экипировки = общий бонус минус прирост от уровней (он уже показан выше).
+              const gear = {
+                attack: bonus.attack - hero.statBonus.attack,
+                defense: bonus.defense - hero.statBonus.defense,
+                speed: bonus.speed,
+                hpBonus: bonus.hpBonus,
+                movement: bonus.movement,
+              };
+              const total = gear.attack + gear.defense + gear.speed + gear.hpBonus + gear.movement;
+              return (
+                <>
+                  {gear.attack ? <BonusRow label="⚔️ Атака" value={`+${gear.attack}`} /> : null}
+                  {gear.defense ? <BonusRow label="🛡️ Защита" value={`+${gear.defense}`} /> : null}
+                  {gear.speed ? <BonusRow label="🏃 Скорость" value={`+${gear.speed}`} /> : null}
+                  {gear.hpBonus ? <BonusRow label="❤️ HP" value={`+${gear.hpBonus}`} /> : null}
+                  {gear.movement ? <BonusRow label="🥾 Доп. MP" value={`+${gear.movement}`} /> : null}
+                  {total === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>—</div>}
+                </>
+              );
+            })()}
           </div>
         </div>
 

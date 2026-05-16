@@ -25,6 +25,7 @@ import type {
 import { VISION_RADIUS_HERO, VISION_RADIUS_TOWN } from "./types";
 import { getEffectiveMaxMP } from "./utils/heroBonus";
 import { makeId, resetIdCounter } from "./utils/id";
+import { levelFromXp } from "./utils/leveling";
 import { chebyshev, findPath, isPassable, pathCost } from "./utils/pathfind";
 import { add, canAfford, emptyBag, pay, RESOURCE_NAMES } from "./utils/resources";
 import { mulberry32, randChoice, randInt } from "./utils/rng";
@@ -228,6 +229,7 @@ export const useGame = create<GameState & Actions>()(
             artifacts: { equipped: {}, backpack: [] },
             level: 1,
             xp: 0,
+            statBonus: { attack: 0, defense: 0 },
             icon: proto.icon,
           };
           heroes[hid] = hero;
@@ -537,6 +539,7 @@ export const useGame = create<GameState & Actions>()(
           artifacts: { equipped: {}, backpack: [] },
           level: 1,
           xp: 0,
+          statBonus: { attack: 0, defense: 0 },
           icon: proto.icon,
         };
 
@@ -800,7 +803,32 @@ export const useGame = create<GameState & Actions>()(
           }
         }
 
-        const newHeroes = { ...s.heroes, [attacker.id]: { ...attacker, army: newAttackerArmy, pos: attacker.pos } };
+        // Начислить XP и обработать level-up (может быть несколько уровней за раз).
+        const newXp = attacker.xp + b.xpReward;
+        const newLevel = levelFromXp(newXp);
+        const newStatBonus = { ...attacker.statBonus };
+        if (newLevel > attacker.level) {
+          for (let lvl = attacker.level + 1; lvl <= newLevel; lvl++) {
+            const which = Math.random() < 0.5 ? "attack" : "defense";
+            newStatBonus[which] += 1;
+            log.push(
+              logLine(s.day, `${attacker.name} — уровень ${lvl}! +1 ${which === "attack" ? "к атаке" : "к защите"}.`),
+            );
+          }
+        }
+        log.push(logLine(s.day, `${attacker.name} получает ${b.xpReward} опыта.`));
+
+        const newHeroes = {
+          ...s.heroes,
+          [attacker.id]: {
+            ...attacker,
+            army: newAttackerArmy,
+            pos: attacker.pos,
+            xp: newXp,
+            level: newLevel,
+            statBonus: newStatBonus,
+          },
+        };
 
         // Если бой был с героем противника — обработаем защищающегося.
         if (b.defenderHeroId) {
@@ -869,7 +897,7 @@ export const useGame = create<GameState & Actions>()(
     }),
     {
       name: "heroes-web-save",
-      version: 3,
+      version: 4,
       migrate: (persisted, fromVersion) => {
         const state = persisted as Partial<GameState>;
         // v1 → v2: artifacts на герое теперь { equipped, backpack } вместо string[].
@@ -894,6 +922,12 @@ export const useGame = create<GameState & Actions>()(
           const all = fullyRevealed(state.map.width, state.map.height);
           for (const p of Object.values(state.players)) {
             if (!p.revealed) p.revealed = { ...all };
+          }
+        }
+        // v3 → v4: герой получил поле statBonus (прирост от уровней).
+        if (fromVersion < 4 && state?.heroes) {
+          for (const h of Object.values(state.heroes)) {
+            if (!h.statBonus) h.statBonus = { attack: 0, defense: 0 };
           }
         }
         return state as GameState;
@@ -1013,8 +1047,8 @@ function interactWithObject(objId: string, heroId?: string) {
   if (obj.kind === "chest") {
     if (!hero) return;
     const player = s.players[hero.ownerId];
-    const gold = obj.goldAmount ?? 1000;
-    const newResources = { ...player.resources, gold: player.resources.gold + gold };
+    const baseAmount = obj.goldAmount ?? 1000;
+    const giveXp = Math.random() < 0.35;
     const newObjects = { ...s.map.objects };
     delete newObjects[obj.id];
     const newTiles = s.map.tiles.slice();
@@ -1022,11 +1056,34 @@ function interactWithObject(objId: string, heroId?: string) {
       ...newTiles[obj.pos.y * s.map.width + obj.pos.x],
       objectId: null,
     };
-    useGame.setState({
-      players: { ...s.players, [player.id]: { ...player, resources: newResources } },
-      map: { ...s.map, objects: newObjects, tiles: newTiles },
-      log: [...s.log, logLine(s.day, `Сундук: +${gold} золота`)],
-    });
+    if (giveXp) {
+      // Сундук с опытом — может дать уровень.
+      const newXp = hero.xp + baseAmount;
+      const newLevel = levelFromXp(newXp);
+      const newStatBonus = { ...hero.statBonus };
+      const levelUps: string[] = [];
+      if (newLevel > hero.level) {
+        for (let lvl = hero.level + 1; lvl <= newLevel; lvl++) {
+          const which = Math.random() < 0.5 ? "attack" : "defense";
+          newStatBonus[which] += 1;
+          levelUps.push(
+            logLine(s.day, `${hero.name} — уровень ${lvl}! +1 ${which === "attack" ? "к атаке" : "к защите"}.`),
+          );
+        }
+      }
+      useGame.setState({
+        heroes: { ...s.heroes, [hero.id]: { ...hero, xp: newXp, level: newLevel, statBonus: newStatBonus } },
+        map: { ...s.map, objects: newObjects, tiles: newTiles },
+        log: [...s.log, logLine(s.day, `Сундук с опытом: +${baseAmount} опыта`), ...levelUps],
+      });
+    } else {
+      const newResources = { ...player.resources, gold: player.resources.gold + baseAmount };
+      useGame.setState({
+        players: { ...s.players, [player.id]: { ...player, resources: newResources } },
+        map: { ...s.map, objects: newObjects, tiles: newTiles },
+        log: [...s.log, logLine(s.day, `Сундук: +${baseAmount} золота`)],
+      });
+    }
     return;
   }
 

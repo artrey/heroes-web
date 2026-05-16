@@ -56,6 +56,8 @@ export function startBattle(args: StartArgs): BattleState {
   });
 
   const turnOrder = computeTurnOrder(stacks, { attackerBonus, defenderBonus });
+  // XP за бой = суммарный HP всех вражеских юнитов.
+  const xpReward = defArmy.reduce((acc, u) => acc + (UNITS[u.unitId]?.hp ?? 0) * u.count, 0);
   return {
     attackerHeroId: args.attackerHero.id,
     defenderHeroId: args.defenderHero?.id ?? null,
@@ -63,6 +65,7 @@ export function startBattle(args: StartArgs): BattleState {
     defenderArmy: args.defenderArmy,
     attackerBonus,
     defenderBonus,
+    xpReward,
     stacks,
     turnOrder,
     activeStackIdx: 0,
