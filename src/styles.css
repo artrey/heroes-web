@@ -499,3 +499,27 @@ select {
   display: flex;
   gap: 12px;
 }
+
+/* ===== MODAL ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: linear-gradient(180deg, #2a2018 0%, #1a1410 100%);
+  border: 1px solid var(--gold);
+  padding: 24px;
+  min-width: 360px;
+  max-width: 480px;
+  border-radius: 4px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+.modal h2 {
+  font-size: 22px;
+  letter-spacing: 1px;
+}

@@ -26,6 +26,35 @@ import { mulberry32, randChoice, randInt } from "./utils/rng";
 
 const PLAYER_COLORS = ["#d04040", "#4080d0", "#40b040", "#d0a040", "#a040b0", "#40b0b0", "#d04080", "#808080"];
 
+const HERO_HIRE_COST: Partial<ResourceBag> = { gold: 2500 };
+
+function findHeroSpawnPos(s: GameState, townPos: Coord): Coord | null {
+  if (!s.map) return null;
+  const occupied = new Set(Object.values(s.heroes).map(h => `${h.pos.x},${h.pos.y}`));
+  // Сначала клетка самого города (она passable=true).
+  if (!occupied.has(`${townPos.x},${townPos.y}`)) {
+    return { x: townPos.x, y: townPos.y };
+  }
+  // Соседние клетки.
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const x = townPos.x + dx;
+      const y = townPos.y + dy;
+      if (x < 0 || y < 0 || x >= s.map.width || y >= s.map.height) continue;
+      const tile = s.map.tiles[y * s.map.width + x];
+      if (!tile.passable) continue;
+      if (tile.objectId) {
+        const obj = s.map.objects[tile.objectId];
+        if (!obj.passable) continue;
+      }
+      if (occupied.has(`${x},${y}`)) continue;
+      return { x, y };
+    }
+  }
+  return null;
+}
+
 const initialState: GameState = {
   phase: "menu",
   day: 1,
@@ -58,6 +87,7 @@ interface Actions {
   closeTown: () => void;
   buildBuilding: (townId: string, buildingId: string) => boolean;
   hireUnits: (townId: string, unitId: string, count: number) => boolean;
+  hireHero: (townId: string) => boolean;
   garrisonToHero: (townId: string, slotIdx: number) => void;
   heroToGarrison: (heroId: string, slotIdx: number) => void;
   battleAct: (action: BattleAction) => void;
@@ -421,6 +451,55 @@ export const useGame = create<GameState & Actions>()(
         set({
           towns: { ...s.towns, [townId]: newTown },
           players: { ...s.players, [player.id]: newPlayer },
+        });
+        return true;
+      },
+
+      hireHero: townId => {
+        const s = get();
+        const town = s.towns[townId];
+        if (!town || !town.ownerId) return false;
+        if (!town.built.includes("tavern")) return false;
+        const player = s.players[town.ownerId];
+        if (!canAfford(player.resources, HERO_HIRE_COST)) return false;
+        if (!s.map) return false;
+        // Найти позицию для нового героя: на клетке города, если свободна, иначе на соседней.
+        const spawnPos = findHeroSpawnPos(s, town.pos);
+        if (!spawnPos) return false;
+
+        const rng = mulberry32((Date.now() ^ town.id.length) >>> 0);
+        const proto = pickHeroProto(town.faction, rng);
+        const hid = makeId("h");
+        const army: UnitStack[] = proto.startingArmy.map(stack => ({
+          unitId: stack.unitId,
+          count: randInt(rng, stack.min, stack.max),
+        }));
+        const hero: Hero = {
+          id: hid,
+          ownerId: town.ownerId,
+          name: proto.name,
+          faction: town.faction,
+          pos: spawnPos,
+          movePoints: 1500,
+          maxMovePoints: 1500,
+          army,
+          level: 1,
+          xp: 0,
+          icon: proto.icon,
+        };
+
+        set({
+          heroes: { ...s.heroes, [hid]: hero },
+          players: {
+            ...s.players,
+            [player.id]: {
+              ...player,
+              resources: pay(player.resources, HERO_HIRE_COST),
+              heroIds: [...player.heroIds, hid],
+            },
+          },
+          log: [...s.log, `Нанят герой: ${hero.name}`],
+          selectedHeroId: hid,
         });
         return true;
       },

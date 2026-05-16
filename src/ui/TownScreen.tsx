@@ -1,8 +1,12 @@
+import { useState } from "react";
+
 import { FACTION_BUILDINGS, getBuilding } from "../game/data/buildings";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { ResourceBag } from "../game/types";
 import { canAfford, RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
+
+const HERO_HIRE_GOLD = 2500;
 
 export function TownScreen() {
   const townId = useGame(s => s.selectedTownId);
@@ -11,9 +15,12 @@ export function TownScreen() {
   const closeTown = useGame(s => s.closeTown);
   const buildBuilding = useGame(s => s.buildBuilding);
   const hireUnits = useGame(s => s.hireUnits);
+  const hireHero = useGame(s => s.hireHero);
   const garrisonToHero = useGame(s => s.garrisonToHero);
   const heroes = useGame(s => s.heroes);
   const heroToGarrison = useGame(s => s.heroToGarrison);
+
+  const [openModal, setOpenModal] = useState<"tavern" | null>(null);
 
   if (!town || !player) return null;
 
@@ -21,6 +28,15 @@ export function TownScreen() {
   const heroHere = Object.values(heroes).find(h => h.pos.x === town.pos.x && h.pos.y === town.pos.y);
 
   const dwellings = buildings.filter(b => b.produces && town.built.includes(b.id));
+
+  function handleBuildingClick(buildingId: string, canBuild: boolean, built: boolean) {
+    if (built) {
+      // Interactive built building.
+      if (buildingId === "tavern") setOpenModal("tavern");
+      return;
+    }
+    if (canBuild) buildBuilding(town!.id, buildingId);
+  }
 
   return (
     <div className="town-screen">
@@ -49,15 +65,19 @@ export function TownScreen() {
               const affordable = canAfford(player.resources, b.cost);
               const canBuild = !built && prereqsOk && affordable && !town.builtToday;
               const cls = built ? "built" : !prereqsOk ? "locked" : !affordable ? "cant-afford" : "";
+              const interactive = built && b.id === "tavern";
               return (
                 <div
                   key={b.id}
                   className={`building-card ${cls}`}
-                  onClick={() => canBuild && buildBuilding(town.id, b.id)}
+                  style={interactive ? { cursor: "pointer" } : undefined}
+                  onClick={() => handleBuildingClick(b.id, canBuild, built)}
                   title={
                     !prereqsOk
                       ? `Требуется: ${b.prereq?.map(p => getBuilding(town.faction, p)?.name).join(", ")}`
-                      : undefined
+                      : interactive
+                        ? "Открыть"
+                        : undefined
                   }
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -186,6 +206,38 @@ export function TownScreen() {
               </div>
             </>
           )}
+        </div>
+      </div>
+
+      {openModal === "tavern" && (
+        <TavernModal
+          gold={player.resources.gold}
+          onClose={() => setOpenModal(null)}
+          onHire={() => {
+            if (hireHero(town.id)) setOpenModal(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TavernModal({ gold, onHire, onClose }: { gold: number; onHire: () => void; onClose: () => void }) {
+  const afford = gold >= HERO_HIRE_GOLD;
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()}>
+        <h2 style={{ marginTop: 0, color: "var(--gold)" }}>🍺 Таверна</h2>
+        <p style={{ color: "var(--text-dim)" }}>
+          За {HERO_HIRE_GOLD} золота можно нанять нового героя со стартовой армией. Появится в городе или рядом с ним.
+        </p>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button onClick={onClose} style={{ flex: 1 }}>
+            Отмена
+          </button>
+          <button onClick={onHire} disabled={!afford} style={{ flex: 2 }}>
+            Нанять героя ({HERO_HIRE_GOLD} 🪙)
+          </button>
         </div>
       </div>
     </div>
