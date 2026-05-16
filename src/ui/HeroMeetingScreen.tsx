@@ -154,7 +154,7 @@ function HeroPanel({
         <div>
           <div style={{ fontSize: 20, color: "var(--gold)" }}>{hero.name}</div>
           <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-            Уровень {hero.level} · {FACTION_META[hero.faction].name} · ⚡ {Math.floor(hero.movePoints / 100)} ходов
+            Уровень {hero.level} · {FACTION_META[hero.faction].name} · ⚡ {hero.movePoints} MP
           </div>
           {(bonus.attack || bonus.defense || bonus.speed || bonus.hpBonus || bonus.movement) > 0 && (
             <div style={{ fontSize: 12, color: "var(--good)", marginTop: 4 }}>
