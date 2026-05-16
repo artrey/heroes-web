@@ -3,6 +3,7 @@ import { AdventureScreen } from "./ui/AdventureScreen";
 import { BattleScreen } from "./ui/BattleScreen";
 import { GameOverScreen } from "./ui/GameOverScreen";
 import { HeroMeetingScreen } from "./ui/HeroMeetingScreen";
+import { HeroScreen } from "./ui/HeroScreen";
 import { MainMenu } from "./ui/MainMenu";
 import { NewGameScreen } from "./ui/NewGameScreen";
 import { TownScreen } from "./ui/TownScreen";
@@ -18,6 +19,7 @@ export function App() {
       {phase === "town" && <TownScreen />}
       {phase === "battle" && <BattleScreen />}
       {phase === "heroMeeting" && <HeroMeetingScreen />}
+      {phase === "hero" && <HeroScreen />}
       {phase === "gameOver" && <GameOverScreen />}
     </div>
   );

@@ -106,6 +106,8 @@ interface Actions {
   endTurn: () => void;
   openTown: (id: string) => void;
   closeTown: () => void;
+  openHero: (id: string) => void;
+  closeHero: () => void;
   buildBuilding: (townId: string, buildingId: string) => boolean;
   hireUnits: (townId: string, unitId: string, count: number) => boolean;
   hireHero: (townId: string) => boolean;
@@ -441,6 +443,9 @@ export const useGame = create<GameState & Actions>()(
 
       openTown: id => set({ phase: "town", selectedTownId: id }),
       closeTown: () => set({ phase: "adventure", selectedTownId: null }),
+
+      openHero: id => set({ phase: "hero", selectedHeroId: id }),
+      closeHero: () => set({ phase: "adventure" }),
 
       buildBuilding: (townId, buildingId) => {
         const s = get();

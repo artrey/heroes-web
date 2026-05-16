@@ -255,6 +255,8 @@ export function AdventureScreen() {
             key={h.id}
             className={`hero-card ${h.id === selectedHeroId ? "selected" : ""}`}
             onClick={() => selectHero(h.id)}
+            onDoubleClick={() => useGame.getState().openHero(h.id)}
+            title="Клик — выбрать, двойной клик — открыть"
           >
             <div className="row">
               <span className="icon">{h.icon}</span>
@@ -262,6 +264,16 @@ export function AdventureScreen() {
                 <div className="name">{h.name}</div>
                 <div className="mp">⚡ {Math.floor(h.movePoints / 100)} ходов</div>
               </div>
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  useGame.getState().openHero(h.id);
+                }}
+                style={{ padding: "4px 8px", fontSize: 12 }}
+                title="Открыть"
+              >
+                📜
+              </button>
             </div>
             <ArmyDisplay hero={h} />
           </div>

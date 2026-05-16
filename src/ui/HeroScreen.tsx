@@ -1,0 +1,199 @@
+import { useState } from "react";
+
+import { ARTIFACTS, RARITY_COLOR, SLOT_ICON, SLOT_LABEL } from "../game/data/artifacts";
+import { UNITS } from "../game/data/units";
+import { useGame } from "../game/store";
+import type { ArtifactSlot } from "../game/types";
+import { ARTIFACT_SLOT_ORDER } from "../game/types";
+import { getEffectiveMaxMP, getHeroBonus } from "../game/utils/heroBonus";
+
+type Selected =
+  | { kind: "army"; slot: number }
+  | { kind: "equipped"; slot: ArtifactSlot }
+  | { kind: "backpack"; idx: number }
+  | null;
+
+export function HeroScreen() {
+  const id = useGame(s => s.selectedHeroId);
+  const hero = useGame(s => (id ? s.heroes[id] : null));
+  const close = useGame(s => s.closeHero);
+  const swapArmySlots = useGame(s => s.swapArmySlots);
+  const equipFromBackpack = useGame(s => s.equipFromBackpack);
+  const unequipToBackpack = useGame(s => s.unequipToBackpack);
+
+  const [selected, setSelected] = useState<Selected>(null);
+
+  if (!hero) return null;
+  const bonus = getHeroBonus(hero);
+  const effMaxMP = getEffectiveMaxMP(hero);
+
+  function clickArmy(slot: number) {
+    if (!hero) return;
+    if (!selected) {
+      if (hero.army[slot]) setSelected({ kind: "army", slot });
+      return;
+    }
+    if (selected.kind !== "army") {
+      setSelected(null);
+      return;
+    }
+    swapArmySlots(hero.id, selected.slot, hero.id, slot);
+    setSelected(null);
+  }
+
+  function clickEquipped(slot: ArtifactSlot) {
+    if (!hero) return;
+    if (!selected) {
+      if (hero.artifacts.equipped[slot]) setSelected({ kind: "equipped", slot });
+      return;
+    }
+    if (selected.kind === "backpack") {
+      const sourceArt = ARTIFACTS[hero.artifacts.backpack[selected.idx]];
+      if (sourceArt && sourceArt.slot === slot) equipFromBackpack(hero.id, selected.idx);
+    }
+    setSelected(null);
+  }
+
+  function clickBackpack(idx: number) {
+    if (!hero) return;
+    if (!selected) {
+      if (hero.artifacts.backpack[idx]) setSelected({ kind: "backpack", idx });
+      return;
+    }
+    if (selected.kind === "equipped") unequipToBackpack(hero.id, selected.slot);
+    setSelected(null);
+  }
+
+  return (
+    <div className="hero-screen">
+      <div className="top-bar">
+        <span className="day" style={{ color: "var(--gold)" }}>
+          {hero.icon} {hero.name}
+        </span>
+        <button style={{ marginLeft: "auto" }} onClick={close}>
+          ← На карту
+        </button>
+      </div>
+
+      <div className="hero-body">
+        <div className="hero-side">
+          <div style={{ fontSize: 96, textAlign: "center", marginBottom: 12 }}>{hero.icon}</div>
+          <h2 style={{ color: "var(--gold)", textAlign: "center", margin: "0 0 4px" }}>{hero.name}</h2>
+          <div style={{ textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
+            {hero.faction === "castle" ? "Castle" : "Rampart"} · Уровень {hero.level}
+          </div>
+          <div style={{ marginTop: 14, fontSize: 13 }}>
+            <div className="stat-row">
+              <span>⚡ Очки движения</span>
+              <span>
+                {Math.floor(hero.movePoints / 100)} / {Math.floor(effMaxMP / 100)}
+              </span>
+            </div>
+            <div className="stat-row">
+              <span>⭐ Опыт</span>
+              <span>{hero.xp}</span>
+            </div>
+            <div className="stat-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}>
+              <span style={{ color: "var(--text-dim)" }}>Бонусы от экипировки:</span>
+            </div>
+            {bonus.attack ? <BonusRow label="⚔️ Атака" value={`+${bonus.attack}`} /> : null}
+            {bonus.defense ? <BonusRow label="🛡️ Защита" value={`+${bonus.defense}`} /> : null}
+            {bonus.speed ? <BonusRow label="🏃 Скорость" value={`+${bonus.speed}`} /> : null}
+            {bonus.hpBonus ? <BonusRow label="❤️ HP" value={`+${bonus.hpBonus}`} /> : null}
+            {bonus.movement ? <BonusRow label="🥾 Доп. MP" value={`+${bonus.movement}`} /> : null}
+            {bonus.attack + bonus.defense + bonus.speed + bonus.hpBonus + bonus.movement === 0 && (
+              <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>—</div>
+            )}
+          </div>
+        </div>
+
+        <div className="hero-main">
+          <h3 style={{ color: "var(--gold)", margin: "0 0 8px" }}>Армия</h3>
+          <div className="hero-army">
+            {Array.from({ length: 7 }).map((_, slot) => {
+              const stack = hero.army[slot];
+              const isSel = selected?.kind === "army" && selected.slot === slot;
+              if (!stack)
+                return (
+                  <div key={slot} className={`army-slot empty ${isSel ? "sel" : ""}`} onClick={() => clickArmy(slot)}>
+                    —
+                  </div>
+                );
+              const u = UNITS[stack.unitId];
+              return (
+                <div
+                  key={slot}
+                  className={`army-slot ${isSel ? "sel" : ""}`}
+                  onClick={() => clickArmy(slot)}
+                  title={`${u.name}: атк ${u.attack + bonus.attack}, защ ${u.defense + bonus.defense}, HP ${u.hp + bonus.hpBonus}, скор ${u.speed + bonus.speed}`}
+                >
+                  <span className="icon">{u.icon}</span>
+                  <span>{stack.count}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <h3 style={{ color: "var(--gold)", margin: "20px 0 8px" }}>Экипировка</h3>
+          <div className="equipped-grid">
+            {ARTIFACT_SLOT_ORDER.map(slot => {
+              const artId = hero.artifacts.equipped[slot];
+              const def = artId ? ARTIFACTS[artId] : null;
+              const isSel = selected?.kind === "equipped" && selected.slot === slot;
+              return (
+                <div
+                  key={slot}
+                  className={`equip-slot ${def ? "filled" : "empty"} ${isSel ? "sel" : ""}`}
+                  style={def ? { borderColor: RARITY_COLOR[def.rarity] } : undefined}
+                  onClick={() => clickEquipped(slot)}
+                  title={def ? `${def.name} — ${def.description}` : `${SLOT_LABEL[slot]} (пусто)`}
+                >
+                  <span className="slot-icon">{def ? def.icon : SLOT_ICON[slot]}</span>
+                  <span className="slot-label">{SLOT_LABEL[slot]}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <h3 style={{ color: "var(--gold)", margin: "20px 0 8px" }}>Рюкзак ({hero.artifacts.backpack.length})</h3>
+          <div className="backpack-grid">
+            {hero.artifacts.backpack.length === 0 && (
+              <div style={{ color: "var(--text-dim)", fontSize: 12, padding: "8px 0" }}>Пусто</div>
+            )}
+            {hero.artifacts.backpack.map((aid, idx) => {
+              const def = ARTIFACTS[aid];
+              const isSel = selected?.kind === "backpack" && selected.idx === idx;
+              return (
+                <div
+                  key={idx}
+                  className={`artifact-slot ${isSel ? "sel" : ""}`}
+                  style={{ borderColor: RARITY_COLOR[def.rarity] }}
+                  onClick={() => clickBackpack(idx)}
+                  title={`${def.name} — ${def.description}`}
+                >
+                  <span style={{ fontSize: 24 }}>{def.icon}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{def.name}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hero-hint">
+            {selected
+              ? "Клик на пустой слот того же типа — экипировать; клик в рюкзак — снять."
+              : "Клик по слоту — выбрать. Армия меняется внутри героя."}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BonusRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="stat-row" style={{ color: "var(--good)" }}>
+      <span>{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+}

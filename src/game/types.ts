@@ -169,7 +169,7 @@ export interface Player {
 export const VISION_RADIUS_HERO = 5;
 export const VISION_RADIUS_TOWN = 6;
 
-export type Phase = "menu" | "newGame" | "adventure" | "town" | "battle" | "heroMeeting" | "gameOver";
+export type Phase = "menu" | "newGame" | "adventure" | "town" | "battle" | "heroMeeting" | "hero" | "gameOver";
 
 export interface BattleStack {
   id: string;

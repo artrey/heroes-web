@@ -606,6 +606,67 @@ select {
   text-align: center;
 }
 
+/* ===== HERO SCREEN ===== */
+.hero-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #2a2018 0%, #1a1410 100%);
+  overflow: hidden;
+}
+.hero-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  padding: 24px;
+  overflow-y: auto;
+}
+.hero-side {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  padding: 18px;
+  border-radius: 4px;
+}
+.hero-main {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  padding: 18px;
+  border-radius: 4px;
+}
+.hero-army {
+  display: flex;
+  gap: 6px;
+}
+.hero-army .army-slot {
+  flex: 1;
+  cursor: pointer;
+  min-height: 64px;
+  font-size: 13px;
+}
+.hero-army .army-slot .icon {
+  font-size: 28px;
+}
+.hero-army .army-slot.sel {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(212, 166, 74, 0.35);
+}
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+.hero-hint {
+  margin-top: 16px;
+  padding: 8px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: center;
+}
+
 /* ===== MODAL ===== */
 .modal-overlay {
   position: fixed;
