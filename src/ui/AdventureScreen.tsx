@@ -6,6 +6,7 @@ import { FACTION_META } from "../game/data/factions";
 import { UNITS as UNITS_LOCAL } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
+import { getHeroBonus } from "../game/utils/heroBonus";
 import { dailyIncomeFor } from "../game/utils/income";
 import { findPath, isPassable, pathCost, stepCost } from "../game/utils/pathfind";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
@@ -341,7 +342,9 @@ export function AdventureScreen() {
               <span className="icon">{h.icon}</span>
               <div style={{ flex: 1 }}>
                 <div className="name">{h.name}</div>
-                <div className="mp">⚡ {h.movePoints} MP</div>
+                <div className="mp">
+                  ⚡ {h.movePoints} MP · ⭐ ур. {h.level}
+                </div>
               </div>
               <button
                 onClick={e => {
@@ -354,6 +357,7 @@ export function AdventureScreen() {
                 📜
               </button>
             </div>
+            <HeroStatsLine hero={h} />
             <ArmyDisplay hero={h} />
           </div>
         ))}
@@ -391,6 +395,19 @@ export function AdventureScreen() {
           Завершить ход (↵)
         </button>
       </div>
+    </div>
+  );
+}
+
+function HeroStatsLine({ hero }: { hero: Hero }) {
+  const bonus = getHeroBonus(hero);
+  return (
+    <div
+      style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4, display: "flex", gap: 10 }}
+      title="Атака и защита героя (уровни + артефакты)"
+    >
+      <span>⚔️ {bonus.attack}</span>
+      <span>🛡️ {bonus.defense}</span>
     </div>
   );
 }
