@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { DIFFICULTY_PRESETS } from "../game/data/difficulty";
+import { FACTION_LIST, FACTION_META } from "../game/data/factions";
 import { TEMPLATES } from "../game/data/templates";
 import { useGame } from "../game/store";
 import type { Difficulty, Faction } from "../game/types";
@@ -47,23 +48,17 @@ export function NewGameScreen() {
 
       <div className="section">
         <h3>Фракция</h3>
-        <div className="faction-picker">
-          <div
-            className={`faction-card ${faction === "castle" ? "selected" : ""}`}
-            onClick={() => setFaction("castle")}
-          >
-            <span className="emoji">🏰</span>
-            <div>Castle</div>
-            <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Замок — рыцари и ангелы</div>
-          </div>
-          <div
-            className={`faction-card ${faction === "rampart" ? "selected" : ""}`}
-            onClick={() => setFaction("rampart")}
-          >
-            <span className="emoji">🏯</span>
-            <div>Rampart</div>
-            <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Оплот — эльфы и драконы</div>
-          </div>
+        <div className="faction-grid">
+          {FACTION_LIST.map(f => {
+            const meta = FACTION_META[f];
+            return (
+              <div key={f} className={`faction-card ${faction === f ? "selected" : ""}`} onClick={() => setFaction(f)}>
+                <span className="emoji">{meta.icon}</span>
+                <div>{meta.name}</div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>{meta.description}</div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

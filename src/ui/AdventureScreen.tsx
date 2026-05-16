@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 // Локальный импорт для удобства.
 import { ARTIFACTS as ARTIFACTS_LOCAL } from "../game/data/artifacts";
+import { FACTION_META } from "../game/data/factions";
 import { UNITS as UNITS_LOCAL } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
@@ -366,7 +367,7 @@ export function AdventureScreen() {
             onClick={() => openTown(t.id)}
           >
             <div className="row">
-              <span className="icon">{t.faction === "castle" ? "🏰" : "🏯"}</span>
+              <span className="icon">{FACTION_META[t.faction].icon}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: "bold" }}>{t.name}</div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Построено: {t.built.length}</div>

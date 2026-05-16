@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { ARTIFACTS, RARITY_COLOR, SLOT_ICON, SLOT_LABEL } from "../game/data/artifacts";
+import { FACTION_META } from "../game/data/factions";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { ArtifactSlot } from "../game/types";
@@ -81,7 +82,7 @@ export function HeroScreen() {
           <div style={{ fontSize: 96, textAlign: "center", marginBottom: 12 }}>{hero.icon}</div>
           <h2 style={{ color: "var(--gold)", textAlign: "center", margin: "0 0 4px" }}>{hero.name}</h2>
           <div style={{ textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
-            {hero.faction === "castle" ? "Castle" : "Rampart"} · Уровень {hero.level}
+            {FACTION_META[hero.faction].name} · Уровень {hero.level}
           </div>
           <div style={{ marginTop: 14, fontSize: 13 }}>
             <div className="stat-row">

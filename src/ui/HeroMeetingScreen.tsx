@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { ARTIFACTS, RARITY_COLOR, SLOT_ICON, SLOT_LABEL } from "../game/data/artifacts";
+import { FACTION_META } from "../game/data/factions";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import { ARTIFACT_SLOT_ORDER } from "../game/types";
@@ -153,8 +154,7 @@ function HeroPanel({
         <div>
           <div style={{ fontSize: 20, color: "var(--gold)" }}>{hero.name}</div>
           <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-            Уровень {hero.level} · {hero.faction === "castle" ? "Castle" : "Rampart"} · ⚡{" "}
-            {Math.floor(hero.movePoints / 100)} ходов
+            Уровень {hero.level} · {FACTION_META[hero.faction].name} · ⚡ {Math.floor(hero.movePoints / 100)} ходов
           </div>
           {(bonus.attack || bonus.defense || bonus.speed || bonus.hpBonus || bonus.movement) > 0 && (
             <div style={{ fontSize: 12, color: "var(--good)", marginTop: 4 }}>

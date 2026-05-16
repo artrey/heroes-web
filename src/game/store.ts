@@ -5,6 +5,7 @@ import { isBattleOver, startBattle, stepBattleAI } from "./battle/engine";
 import { ARTIFACTS, getArtifact } from "./data/artifacts";
 import { FACTION_BUILDINGS, getBuilding } from "./data/buildings";
 import { getPreset } from "./data/difficulty";
+import { FACTION_LIST, FACTION_META } from "./data/factions";
 import { pickHeroProto } from "./data/heroes";
 import { reverseRate } from "./data/marketRates";
 import { FACTION_UNIT_ORDER, getUnit, UNITS } from "./data/units";
@@ -153,19 +154,11 @@ export const useGame = create<GameState & Actions>()(
 
       startGame: opts => {
         resetIdCounter();
-        const factions: Faction[] = [
-          "castle",
-          "rampart",
-          "castle",
-          "rampart",
-          "castle",
-          "rampart",
-          "castle",
-          "rampart",
-        ];
-        factions[0] = opts.playerFaction;
+        const factionRng = mulberry32(opts.seed ^ 0xfeedf00d);
+        const factions: Faction[] = [opts.playerFaction];
         for (let i = 1; i <= opts.opponentCount; i++) {
-          factions[i] = i % 2 === 0 ? opts.playerFaction : opts.playerFaction === "castle" ? "rampart" : "castle";
+          // Каждому ИИ-противнику — случайная фракция из всех 9.
+          factions.push(FACTION_LIST[Math.floor(factionRng() * FACTION_LIST.length)]);
         }
         const playerCount = 1 + opts.opponentCount;
 
@@ -214,7 +207,7 @@ export const useGame = create<GameState & Actions>()(
             ownerId: pid,
             blocking: true,
             passable: true,
-            icon: start.faction === "castle" ? "🏰" : "🏯",
+            icon: FACTION_META[start.faction].icon,
           };
 
           // Герой.

@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { FACTION_BUILDINGS, getBuilding } from "../game/data/buildings";
+import { FACTION_META } from "../game/data/factions";
 import { reverseRate } from "../game/data/marketRates";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
@@ -45,7 +46,7 @@ export function TownScreen() {
     <div className="town-screen">
       <div className="top-bar">
         <span className="day">
-          {town.faction === "castle" ? "🏰" : "🏯"} {town.name}
+          {FACTION_META[town.faction].icon} {town.name}
         </span>
         <div className="res-bar">
           {(Object.keys(player.resources) as Array<keyof ResourceBag>).map(k => {

@@ -1,6 +1,15 @@
 // Игровые типы. Терминология близка к HoMM3 / HotA.
 
-export type Faction = "castle" | "rampart";
+export type Faction =
+  | "castle"
+  | "rampart"
+  | "tower"
+  | "inferno"
+  | "necropolis"
+  | "dungeon"
+  | "stronghold"
+  | "fortress"
+  | "conflux";
 
 export type Resource = "gold" | "wood" | "ore" | "mercury" | "sulfur" | "crystal" | "gems";
 
