@@ -1,4 +1,4 @@
-import type { GameMap, Coord } from '../types';
+import type { Coord, GameMap } from "../types";
 
 // Стандартный A* для 8-связной сетки. Возвращает массив координат от старта (не включая) до цели.
 // Если путь не найден — возвращает null.
@@ -12,8 +12,14 @@ interface Node {
 }
 
 const DIRS: Array<[number, number]> = [
-  [1, 0], [-1, 0], [0, 1], [0, -1],
-  [1, 1], [1, -1], [-1, 1], [-1, -1],
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
 ];
 
 function key(x: number, y: number) {
@@ -45,7 +51,13 @@ export function isPassable(map: GameMap, x: number, y: number, allowGoalObject =
 
 export function findPath(map: GameMap, start: Coord, goal: Coord): Coord[] | null {
   if (start.x === goal.x && start.y === goal.y) return [];
-  const startNode: Node = { x: start.x, y: start.y, g: 0, f: heuristic(start.x, start.y, goal.x, goal.y), parent: null };
+  const startNode: Node = {
+    x: start.x,
+    y: start.y,
+    g: 0,
+    f: heuristic(start.x, start.y, goal.x, goal.y),
+    parent: null,
+  };
   const open: Node[] = [startNode];
   const openMap = new Map<string, Node>();
   const closed = new Set<string>();

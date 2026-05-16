@@ -15,12 +15,14 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   margin: 0;
   height: 100%;
   background: var(--bg-0);
   color: var(--text);
-  font-family: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  font-family: "Cinzel", "Trajan Pro", Georgia, serif;
   user-select: none;
 }
 
@@ -45,7 +47,8 @@ button:disabled {
   cursor: not-allowed;
 }
 
-input, select {
+input,
+select {
   font-family: inherit;
   background: var(--bg-1);
   color: var(--text);
@@ -78,7 +81,9 @@ input, select {
   font-size: 72px;
   margin: 0 0 8px;
   color: var(--gold);
-  text-shadow: 0 4px 20px rgba(212, 166, 74, 0.4), 0 2px 0 #000;
+  text-shadow:
+    0 4px 20px rgba(212, 166, 74, 0.4),
+    0 2px 0 #000;
   letter-spacing: 4px;
 }
 .menu .subtitle {
@@ -140,22 +145,37 @@ input, select {
   border-radius: 3px;
   transition: all 0.15s;
 }
-.template-card:hover { border-color: var(--gold); }
+.template-card:hover {
+  border-color: var(--gold);
+}
 .template-card.selected {
   border-color: var(--gold);
   box-shadow: 0 0 0 2px rgba(212, 166, 74, 0.3);
 }
-.template-card h4 { margin: 0 0 6px; color: var(--gold); }
-.template-card p { margin: 0; font-size: 13px; color: var(--text-dim); }
+.template-card h4 {
+  margin: 0 0 6px;
+  color: var(--gold);
+}
+.template-card p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+}
 .form-row {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 10px;
 }
-.form-row label { min-width: 180px; color: var(--text-dim); }
+.form-row label {
+  min-width: 180px;
+  color: var(--text-dim);
+}
 
-.faction-picker { display: flex; gap: 12px; }
+.faction-picker {
+  display: flex;
+  gap: 12px;
+}
 .faction-card {
   flex: 1;
   background: var(--bg-2);
@@ -165,10 +185,20 @@ input, select {
   text-align: center;
   border-radius: 3px;
 }
-.faction-card.selected { border-color: var(--gold); }
-.faction-card .emoji { font-size: 48px; display: block; margin-bottom: 6px; }
+.faction-card.selected {
+  border-color: var(--gold);
+}
+.faction-card .emoji {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 6px;
+}
 
-.new-game .footer { display: flex; gap: 12px; margin-top: 24px; }
+.new-game .footer {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
 .new-game .footer button.primary {
   background: linear-gradient(180deg, #8a5a26 0%, #4a2a10 100%);
   border-color: var(--gold);
@@ -196,7 +226,10 @@ input, select {
   gap: 16px;
   font-size: 13px;
 }
-.top-bar .day { color: var(--gold); font-weight: bold; }
+.top-bar .day {
+  color: var(--gold);
+  font-weight: bold;
+}
 .top-bar .res-bar {
   display: flex;
   gap: 14px;
@@ -237,22 +270,35 @@ input, select {
   font-size: 14px;
   letter-spacing: 1px;
 }
-.hero-card, .town-card {
+.hero-card,
+.town-card {
   background: var(--bg-2);
   border: 1px solid var(--border);
   padding: 10px;
   border-radius: 3px;
   cursor: pointer;
 }
-.hero-card.selected, .town-card.selected { border-color: var(--gold); }
-.hero-card .row, .town-card .row {
+.hero-card.selected,
+.town-card.selected {
+  border-color: var(--gold);
+}
+.hero-card .row,
+.town-card .row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.hero-card .icon, .town-card .icon { font-size: 24px; }
-.hero-card .name { font-weight: bold; }
-.hero-card .mp { font-size: 12px; color: var(--text-dim); }
+.hero-card .icon,
+.town-card .icon {
+  font-size: 24px;
+}
+.hero-card .name {
+  font-weight: bold;
+}
+.hero-card .mp {
+  font-size: 12px;
+  color: var(--text-dim);
+}
 
 .army-row {
   display: flex;
@@ -268,8 +314,13 @@ input, select {
   font-size: 11px;
   min-height: 44px;
 }
-.army-slot .icon { font-size: 20px; display: block; }
-.army-slot.empty { opacity: 0.3; }
+.army-slot .icon {
+  font-size: 20px;
+  display: block;
+}
+.army-slot.empty {
+  opacity: 0.3;
+}
 
 .end-turn-btn {
   background: linear-gradient(180deg, #8a5a26 0%, #4a2a10 100%);
@@ -289,8 +340,13 @@ input, select {
   font-size: 11px;
   border-radius: 3px;
 }
-.log-panel .entry { padding: 2px 0; color: var(--text-dim); }
-.log-panel .entry:last-child { color: var(--text); }
+.log-panel .entry {
+  padding: 2px 0;
+  color: var(--text-dim);
+}
+.log-panel .entry:last-child {
+  color: var(--text);
+}
 
 /* ===== TOWN ===== */
 .town-screen {
@@ -309,7 +365,11 @@ input, select {
   padding: 24px;
   overflow-y: auto;
 }
-.town-title { color: var(--gold); font-size: 24px; margin: 0 0 20px; }
+.town-title {
+  color: var(--gold);
+  font-size: 24px;
+  margin: 0 0 20px;
+}
 .buildings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -323,13 +383,35 @@ input, select {
   border-radius: 3px;
   transition: all 0.15s;
 }
-.building-card.built { border-color: var(--good); background: rgba(95, 168, 80, 0.08); }
-.building-card.locked { opacity: 0.45; cursor: not-allowed; }
-.building-card.cant-afford { opacity: 0.65; }
-.building-card .icon { font-size: 28px; }
-.building-card .name { font-weight: bold; margin: 4px 0; }
-.building-card .desc { font-size: 12px; color: var(--text-dim); }
-.building-card .cost { font-size: 11px; margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.building-card.built {
+  border-color: var(--good);
+  background: rgba(95, 168, 80, 0.08);
+}
+.building-card.locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.building-card.cant-afford {
+  opacity: 0.65;
+}
+.building-card .icon {
+  font-size: 28px;
+}
+.building-card .name {
+  font-weight: bold;
+  margin: 4px 0;
+}
+.building-card .desc {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.building-card .cost {
+  font-size: 11px;
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 
 .town-sidebar {
   background: var(--bg-1);
@@ -344,9 +426,20 @@ input, select {
   margin-bottom: 8px;
   border-radius: 3px;
 }
-.recruit-card .row { display: flex; align-items: center; gap: 8px; }
-.recruit-card .icon { font-size: 28px; }
-.recruit-card button { padding: 4px 8px; font-size: 12px; margin-top: 6px; width: 100%; }
+.recruit-card .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recruit-card .icon {
+  font-size: 28px;
+}
+.recruit-card button {
+  padding: 4px 8px;
+  font-size: 12px;
+  margin-top: 6px;
+  width: 100%;
+}
 
 /* ===== BATTLE ===== */
 .battle-screen {
@@ -363,7 +456,9 @@ input, select {
   position: relative;
   padding: 16px;
 }
-.battle-canvas { display: block; }
+.battle-canvas {
+  display: block;
+}
 .battle-controls {
   background: var(--bg-1);
   border-top: 1px solid var(--border);
@@ -392,6 +487,15 @@ input, select {
   justify-content: center;
   background: radial-gradient(circle, rgba(212, 166, 74, 0.1), transparent 70%);
 }
-.gameover h1 { font-size: 64px; color: var(--gold); margin: 0 0 24px; }
-.gameover.defeat h1 { color: var(--danger); }
-.gameover .actions { display: flex; gap: 12px; }
+.gameover h1 {
+  font-size: 64px;
+  color: var(--gold);
+  margin: 0 0 24px;
+}
+.gameover.defeat h1 {
+  color: var(--danger);
+}
+.gameover .actions {
+  display: flex;
+  gap: 12px;
+}

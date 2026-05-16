@@ -1,6 +1,6 @@
-import type { BattleState, BattleStack, Coord, Hero, UnitStack } from '../types';
-import { UNITS, getUnit } from '../data/units';
-import { makeId } from '../utils/id';
+import { getUnit, UNITS } from "../data/units";
+import type { BattleStack, BattleState, Coord, Hero, UnitStack } from "../types";
+import { makeId } from "../utils/id";
 
 // Поле боя 15x11 — близко к HoMM3. Простая квадратная сетка с 8-связностью.
 export const BATTLE_W = 15;
@@ -21,11 +21,11 @@ export function startBattle(args: StartArgs): BattleState {
     const def = getUnit(u.unitId);
     const y = positionForSlot(args.attackerHero.army.length, idx);
     stacks.push({
-      id: makeId('bs'),
+      id: makeId("bs"),
       unitId: u.unitId,
       count: u.count,
       hp: def.hp,
-      side: 'attacker',
+      side: "attacker",
       pos: { x: 0, y },
       hasActed: false,
       hasRetaliated: false,
@@ -39,11 +39,11 @@ export function startBattle(args: StartArgs): BattleState {
     const def = getUnit(u.unitId);
     const y = positionForSlot(defArmy.length, idx);
     stacks.push({
-      id: makeId('bs'),
+      id: makeId("bs"),
       unitId: u.unitId,
       count: u.count,
       hp: def.hp,
-      side: 'defender',
+      side: "defender",
       pos: { x: BATTLE_W - 1, y },
       hasActed: false,
       hasRetaliated: false,
@@ -62,7 +62,7 @@ export function startBattle(args: StartArgs): BattleState {
     activeStackIdx: 0,
     round: 1,
     winner: null,
-    log: ['Бой начался!'],
+    log: ["Бой начался!"],
   };
 }
 
@@ -74,22 +74,22 @@ function positionForSlot(total: number, idx: number): number {
 
 function computeTurnOrder(stacks: BattleStack[]): string[] {
   return stacks
-    .filter((s) => s.count > 0)
-    .map((s) => ({ s, ini: UNITS[s.unitId].initiative + UNITS[s.unitId].speed * 0.01 }))
+    .filter(s => s.count > 0)
+    .map(s => ({ s, ini: UNITS[s.unitId].initiative + UNITS[s.unitId].speed * 0.01 }))
     .sort((a, b) => b.ini - a.ini)
-    .map((x) => x.s.id);
+    .map(x => x.s.id);
 }
 
 export function activeStack(b: BattleState): BattleStack | null {
   const id = b.turnOrder[b.activeStackIdx];
-  return b.stacks.find((s) => s.id === id) ?? null;
+  return b.stacks.find(s => s.id === id) ?? null;
 }
 
-export function isBattleOver(b: BattleState): 'attacker' | 'defender' | null {
-  const attAlive = b.stacks.some((s) => s.side === 'attacker' && s.count > 0);
-  const defAlive = b.stacks.some((s) => s.side === 'defender' && s.count > 0);
-  if (!attAlive) return 'defender';
-  if (!defAlive) return 'attacker';
+export function isBattleOver(b: BattleState): "attacker" | "defender" | null {
+  const attAlive = b.stacks.some(s => s.side === "attacker" && s.count > 0);
+  const defAlive = b.stacks.some(s => s.side === "defender" && s.count > 0);
+  if (!attAlive) return "defender";
+  if (!defAlive) return "attacker";
   return null;
 }
 
@@ -105,9 +105,7 @@ export function reachable(b: BattleState, stack: BattleStack): Map<string, numbe
   const startKey = key(stack.pos);
   dist.set(startKey, 0);
   const queue: Array<{ pos: Coord; d: number }> = [{ pos: stack.pos, d: 0 }];
-  const occupied = new Set(
-    b.stacks.filter((s) => s.count > 0 && s.id !== stack.id).map((s) => key(s.pos))
-  );
+  const occupied = new Set(b.stacks.filter(s => s.count > 0 && s.id !== stack.id).map(s => key(s.pos)));
   while (queue.length) {
     const { pos, d } = queue.shift()!;
     if (d >= speed) continue;
@@ -132,7 +130,9 @@ export function reachable(b: BattleState, stack: BattleStack): Map<string, numbe
   return flyDist;
 }
 
-function key(c: Coord): string { return `${c.x},${c.y}`; }
+function key(c: Coord): string {
+  return `${c.x},${c.y}`;
+}
 
 function neighbors(c: Coord): Coord[] {
   const out: Coord[] = [];
@@ -152,11 +152,15 @@ export function canShoot(b: BattleState, attacker: BattleStack): boolean {
   if (!def.ranged) return false;
   if (attacker.shots <= 0) return false;
   // Если рядом враг — стрелять нельзя.
-  const enemies = b.stacks.filter((s) => s.side !== attacker.side && s.count > 0);
-  return !enemies.some((e) => chebyshev(attacker.pos, e.pos) === 1);
+  const enemies = b.stacks.filter(s => s.side !== attacker.side && s.count > 0);
+  return !enemies.some(e => chebyshev(attacker.pos, e.pos) === 1);
 }
 
-function rollDamage(attacker: BattleStack, defender: BattleStack, ranged: boolean): { dmg: number; killed: number; remainingHp: number; newCount: number } {
+function rollDamage(
+  attacker: BattleStack,
+  defender: BattleStack,
+  ranged: boolean,
+): { dmg: number; killed: number; remainingHp: number; newCount: number } {
   const aDef = UNITS[attacker.unitId];
   const dDef = UNITS[defender.unitId];
   // База: среднее урона * count.
@@ -180,13 +184,13 @@ function rollDamage(attacker: BattleStack, defender: BattleStack, ranged: boolea
 }
 
 export function doAttack(b: BattleState, attackerId: string, defenderId: string, approachTo?: Coord): BattleState {
-  const attacker = b.stacks.find((s) => s.id === attackerId);
-  const defender = b.stacks.find((s) => s.id === defenderId);
+  const attacker = b.stacks.find(s => s.id === attackerId);
+  const defender = b.stacks.find(s => s.id === defenderId);
   if (!attacker || !defender) return b;
   const aDef = UNITS[attacker.unitId];
-  const newB: BattleState = { ...b, stacks: b.stacks.map((s) => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
-  const a = newB.stacks.find((s) => s.id === attackerId)!;
-  const d = newB.stacks.find((s) => s.id === defenderId)!;
+  const newB: BattleState = { ...b, stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
+  const a = newB.stacks.find(s => s.id === attackerId)!;
+  const d = newB.stacks.find(s => s.id === defenderId)!;
   // Перемещение в approachTo, если задано.
   if (approachTo) a.pos = { ...approachTo };
   // Удар.
@@ -206,9 +210,9 @@ export function doAttack(b: BattleState, attackerId: string, defenderId: string,
 }
 
 export function doShoot(b: BattleState, attackerId: string, defenderId: string): BattleState {
-  const newB: BattleState = { ...b, stacks: b.stacks.map((s) => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
-  const a = newB.stacks.find((s) => s.id === attackerId)!;
-  const d = newB.stacks.find((s) => s.id === defenderId)!;
+  const newB: BattleState = { ...b, stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
+  const a = newB.stacks.find(s => s.id === attackerId)!;
+  const d = newB.stacks.find(s => s.id === defenderId)!;
   if (!a || !d) return b;
   if (!canShoot(newB, a)) return b;
   a.shots -= 1;
@@ -220,50 +224,50 @@ export function doShoot(b: BattleState, attackerId: string, defenderId: string):
 }
 
 export function doMove(b: BattleState, stackId: string, to: Coord): BattleState {
-  const newB: BattleState = { ...b, stacks: b.stacks.map((s) => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
-  const s = newB.stacks.find((st) => st.id === stackId)!;
+  const newB: BattleState = { ...b, stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
+  const s = newB.stacks.find(st => st.id === stackId)!;
   s.pos = { ...to };
   newB.log.push(`${UNITS[s.unitId].name} перемещается.`);
   return finalizeTurn(newB, s.id);
 }
 
 export function doWait(b: BattleState, stackId: string): BattleState {
-  const newB: BattleState = { ...b, stacks: b.stacks.map((s) => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
-  newB.log.push(`${UNITS[newB.stacks.find((s) => s.id === stackId)!.unitId].name} ждёт.`);
+  const newB: BattleState = { ...b, stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
+  newB.log.push(`${UNITS[newB.stacks.find(s => s.id === stackId)!.unitId].name} ждёт.`);
   return finalizeTurn(newB, stackId);
 }
 
 export function doDefend(b: BattleState, stackId: string): BattleState {
-  const newB: BattleState = { ...b, stacks: b.stacks.map((s) => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
-  newB.log.push(`${UNITS[newB.stacks.find((s) => s.id === stackId)!.unitId].name} защищается.`);
+  const newB: BattleState = { ...b, stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
+  newB.log.push(`${UNITS[newB.stacks.find(s => s.id === stackId)!.unitId].name} защищается.`);
   return finalizeTurn(newB, stackId);
 }
 
 function finalizeTurn(b: BattleState, justActedId: string): BattleState {
-  const s = b.stacks.find((st) => st.id === justActedId);
+  const s = b.stacks.find(st => st.id === justActedId);
   if (s) s.hasActed = true;
   // Перейти к следующему живому стеку в turnOrder.
   let idx = b.activeStackIdx;
   for (let i = 1; i <= b.turnOrder.length; i++) {
     const candIdx = (idx + i) % b.turnOrder.length;
-    const cand = b.stacks.find((st) => st.id === b.turnOrder[candIdx]);
+    const cand = b.stacks.find(st => st.id === b.turnOrder[candIdx]);
     if (cand && cand.count > 0 && !cand.hasActed) {
       return { ...b, activeStackIdx: candIdx };
     }
   }
   // Если все ходили — новый раунд.
-  const newStacks = b.stacks.map((st) => ({ ...st, hasActed: false, hasRetaliated: false }));
+  const newStacks = b.stacks.map(st => ({ ...st, hasActed: false, hasRetaliated: false }));
   const newOrder = computeTurnOrder(newStacks);
   return { ...b, stacks: newStacks, turnOrder: newOrder, activeStackIdx: 0, round: b.round + 1 };
 }
 
 // Адъяцентные пустые клетки рядом с defender, отсортированные по расстоянию до attacker.
 export function approachTiles(b: BattleState, attackerId: string, defenderId: string): Coord[] {
-  const attacker = b.stacks.find((s) => s.id === attackerId);
-  const defender = b.stacks.find((s) => s.id === defenderId);
+  const attacker = b.stacks.find(s => s.id === attackerId);
+  const defender = b.stacks.find(s => s.id === defenderId);
   if (!attacker || !defender) return [];
   const reach = reachable(b, attacker);
-  const occupied = new Set(b.stacks.filter((s) => s.count > 0 && s.id !== attacker.id).map((s) => key(s.pos)));
+  const occupied = new Set(b.stacks.filter(s => s.count > 0 && s.id !== attacker.id).map(s => key(s.pos)));
   const candidates: Coord[] = [];
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
@@ -282,7 +286,7 @@ export function approachTiles(b: BattleState, attackerId: string, defenderId: st
 export function stepBattleAI(b: BattleState): { battle: BattleState } {
   const act = activeStack(b);
   if (!act) return { battle: b };
-  const enemies = b.stacks.filter((s) => s.side !== act.side && s.count > 0);
+  const enemies = b.stacks.filter(s => s.side !== act.side && s.count > 0);
   if (enemies.length === 0) return { battle: b };
   // Если можно стрелять — стрелять по самому слабому.
   if (canShoot(b, act)) {
@@ -302,7 +306,7 @@ export function stepBattleAI(b: BattleState): { battle: BattleState } {
   const reach = reachable(b, act);
   let best: { c: Coord; d: number } | null = null;
   for (const [k, _d] of reach) {
-    const [x, y] = k.split(',').map(Number);
+    const [x, y] = k.split(",").map(Number);
     const dist = chebyshev({ x, y }, target.pos);
     if (!best || dist < best.d) best = { c: { x, y }, d: dist };
   }

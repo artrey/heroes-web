@@ -1,10 +1,10 @@
-import type { MapTemplate } from '../types';
+import type { MapTemplate } from "../types";
 
 export const TEMPLATES: MapTemplate[] = [
   {
-    id: 'jebus',
-    name: 'Jebus Cross',
-    description: 'Классический шаблон HotA. Богатый центр, плотные монстры. Карта S.',
+    id: "jebus",
+    name: "Jebus Cross",
+    description: "Классический шаблон HotA. Богатый центр, плотные монстры. Карта S.",
     defaultWidth: 36,
     defaultHeight: 36,
     recommendedOpponents: { min: 1, max: 3 },
@@ -13,9 +13,9 @@ export const TEMPLATES: MapTemplate[] = [
     mineCount: 12,
   },
   {
-    id: 'h3sw',
-    name: '8MM6a',
-    description: 'Сбалансированный шаблон для 2 игроков. Карта M.',
+    id: "h3sw",
+    name: "8MM6a",
+    description: "Сбалансированный шаблон для 2 игроков. Карта M.",
     defaultWidth: 48,
     defaultHeight: 48,
     recommendedOpponents: { min: 1, max: 3 },
@@ -24,9 +24,9 @@ export const TEMPLATES: MapTemplate[] = [
     mineCount: 16,
   },
   {
-    id: 'rich',
-    name: 'Богатый край',
-    description: 'Очень много ресурсов, мало монстров. Быстрое развитие.',
+    id: "rich",
+    name: "Богатый край",
+    description: "Очень много ресурсов, мало монстров. Быстрое развитие.",
     defaultWidth: 36,
     defaultHeight: 36,
     recommendedOpponents: { min: 1, max: 5 },
@@ -35,9 +35,9 @@ export const TEMPLATES: MapTemplate[] = [
     mineCount: 18,
   },
   {
-    id: 'rookie',
-    name: 'Новичок',
-    description: 'Маленькая карта с лёгкими противниками. Для первой игры.',
+    id: "rookie",
+    name: "Новичок",
+    description: "Маленькая карта с лёгкими противниками. Для первой игры.",
     defaultWidth: 24,
     defaultHeight: 24,
     recommendedOpponents: { min: 1, max: 2 },
@@ -48,5 +48,5 @@ export const TEMPLATES: MapTemplate[] = [
 ];
 
 export function getTemplate(id: string) {
-  return TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0];
+  return TEMPLATES.find(t => t.id === id) ?? TEMPLATES[0];
 }

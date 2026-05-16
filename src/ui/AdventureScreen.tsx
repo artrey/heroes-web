@@ -1,42 +1,45 @@
-import { useEffect, useRef, useState } from 'react';
-import { useGame } from '../game/store';
-import { RESOURCE_ICONS, RESOURCE_NAMES } from '../game/utils/resources';
-import type { Coord, Hero, ResourceBag, Tile } from '../game/types';
-import { findPath, isPassable } from '../game/utils/pathfind';
+import { useEffect, useRef, useState } from "react";
+
+// Локальный импорт для удобства.
+import { UNITS as UNITS_LOCAL } from "../game/data/units";
+import { useGame } from "../game/store";
+import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
+import { findPath, isPassable } from "../game/utils/pathfind";
+import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 
 const TILE_SIZE = 32;
 
 const TERRAIN_COLOR: Record<string, string> = {
-  grass: '#3a5a2a',
-  dirt: '#6b4a2a',
-  sand: '#c8a86a',
-  snow: '#d8d8e0',
-  forest: '#1a3a1a',
-  mountain: '#5a4a3a',
-  water: '#2a4a8a',
-  lava: '#a02a10',
-  rough: '#7a6a4a',
+  grass: "#3a5a2a",
+  dirt: "#6b4a2a",
+  sand: "#c8a86a",
+  snow: "#d8d8e0",
+  forest: "#1a3a1a",
+  mountain: "#5a4a3a",
+  water: "#2a4a8a",
+  lava: "#a02a10",
+  rough: "#7a6a4a",
 };
 
 export function AdventureScreen() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const map = useGame((s) => s.map);
-  const heroes = useGame((s) => s.heroes);
-  const towns = useGame((s) => s.towns);
-  const players = useGame((s) => s.players);
-  const activePlayerId = useGame((s) => s.activePlayerId);
-  const selectedHeroId = useGame((s) => s.selectedHeroId);
-  const day = useGame((s) => s.day);
-  const week = useGame((s) => s.week);
-  const month = useGame((s) => s.month);
-  const log = useGame((s) => s.log);
+  const map = useGame(s => s.map);
+  const heroes = useGame(s => s.heroes);
+  const towns = useGame(s => s.towns);
+  const players = useGame(s => s.players);
+  const activePlayerId = useGame(s => s.activePlayerId);
+  const selectedHeroId = useGame(s => s.selectedHeroId);
+  const day = useGame(s => s.day);
+  const week = useGame(s => s.week);
+  const month = useGame(s => s.month);
+  const log = useGame(s => s.log);
 
-  const moveHeroTo = useGame((s) => s.moveHeroTo);
-  const selectHero = useGame((s) => s.selectHero);
-  const endTurn = useGame((s) => s.endTurn);
-  const openTown = useGame((s) => s.openTown);
+  const moveHeroTo = useGame(s => s.moveHeroTo);
+  const selectHero = useGame(s => s.selectHero);
+  const endTurn = useGame(s => s.endTurn);
+  const openTown = useGame(s => s.openTown);
 
   const [camera, setCamera] = useState<Coord>({ x: 0, y: 0 });
   const [hoverPath, setHoverPath] = useState<Coord[] | null>(null);
@@ -61,7 +64,7 @@ export function AdventureScreen() {
   // Рендер карты.
   useEffect(() => {
     if (!map || !canvasRef.current) return;
-    const ctx = canvasRef.current.getContext('2d');
+    const ctx = canvasRef.current.getContext("2d");
     if (!ctx) return;
     drawMap(ctx, map.tiles, map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId);
   }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId]);
@@ -76,13 +79,13 @@ export function AdventureScreen() {
       c.height = cont.clientHeight;
       // Перерисовать.
       if (map) {
-        const ctx = c.getContext('2d');
+        const ctx = c.getContext("2d");
         if (ctx) drawMap(ctx, map.tiles, map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId);
       }
     }
     fit();
-    window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
   }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId]);
 
   if (!map) return null;
@@ -121,7 +124,7 @@ export function AdventureScreen() {
     const tile = map!.tiles[t.y * map!.width + t.x];
     if (tile.objectId) {
       // Герой?
-      const heroHere = Object.values(heroes).find((h) => h.pos.x === t.x && h.pos.y === t.y);
+      const heroHere = Object.values(heroes).find(h => h.pos.x === t.x && h.pos.y === t.y);
       if (heroHere && heroHere.ownerId === activePlayerId) {
         selectHero(heroHere.id);
         return;
@@ -147,27 +150,37 @@ export function AdventureScreen() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const step = 64;
-      if (e.key === 'ArrowLeft') setCamera((c) => ({ ...c, x: Math.max(0, c.x - step) }));
-      if (e.key === 'ArrowRight' && map) setCamera((c) => ({ ...c, x: Math.min(map.width * TILE_SIZE - (containerRef.current?.clientWidth ?? 0), c.x + step) }));
-      if (e.key === 'ArrowUp') setCamera((c) => ({ ...c, y: Math.max(0, c.y - step) }));
-      if (e.key === 'ArrowDown' && map) setCamera((c) => ({ ...c, y: Math.min(map.height * TILE_SIZE - (containerRef.current?.clientHeight ?? 0), c.y + step) }));
-      if (e.key === 'Enter') endTurn();
+      if (e.key === "ArrowLeft") setCamera(c => ({ ...c, x: Math.max(0, c.x - step) }));
+      if (e.key === "ArrowRight" && map)
+        setCamera(c => ({
+          ...c,
+          x: Math.min(map.width * TILE_SIZE - (containerRef.current?.clientWidth ?? 0), c.x + step),
+        }));
+      if (e.key === "ArrowUp") setCamera(c => ({ ...c, y: Math.max(0, c.y - step) }));
+      if (e.key === "ArrowDown" && map)
+        setCamera(c => ({
+          ...c,
+          y: Math.min(map.height * TILE_SIZE - (containerRef.current?.clientHeight ?? 0), c.y + step),
+        }));
+      if (e.key === "Enter") endTurn();
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [map]);
 
-  const playerHeroes = activePlayer ? activePlayer.heroIds.map((id) => heroes[id]).filter(Boolean) : [];
-  const playerTowns = activePlayer ? activePlayer.townIds.map((id) => towns[id]).filter(Boolean) : [];
+  const playerHeroes = activePlayer ? activePlayer.heroIds.map(id => heroes[id]).filter(Boolean) : [];
+  const playerTowns = activePlayer ? activePlayer.townIds.map(id => towns[id]).filter(Boolean) : [];
 
   return (
     <div className="adventure">
       <div className="top-bar">
-        <span className="day">📅 Месяц {month}, Неделя {week}, День {day}</span>
+        <span className="day">
+          📅 Месяц {month}, Неделя {week}, День {day}
+        </span>
         <span style={{ color: activePlayer?.color }}>● {activePlayer?.name}</span>
-        {activePlayer && !activePlayer.isHuman && <span style={{ color: 'var(--accent)' }}>(ход ИИ…)</span>}
+        {activePlayer && !activePlayer.isHuman && <span style={{ color: "var(--accent)" }}>(ход ИИ…)</span>}
         <div className="res-bar">
-          {(Object.keys(activePlayer?.resources ?? {}) as Array<keyof ResourceBag>).map((k) => (
+          {(Object.keys(activePlayer?.resources ?? {}) as Array<keyof ResourceBag>).map(k => (
             <div className="res-item" key={k} title={RESOURCE_NAMES[k]}>
               <span>{RESOURCE_ICONS[k]}</span>
               <span>{activePlayer!.resources[k]}</span>
@@ -178,21 +191,16 @@ export function AdventureScreen() {
       </div>
 
       <div className="map-area" ref={containerRef}>
-        <canvas
-          ref={canvasRef}
-          className="map-canvas"
-          onClick={handleClick}
-          onMouseMove={handleMouseMove}
-        />
+        <canvas ref={canvasRef} className="map-canvas" onClick={handleClick} onMouseMove={handleMouseMove} />
       </div>
 
       <div className="side-panel">
         <h3>🛡 ГЕРОИ ({playerHeroes.length})</h3>
-        {playerHeroes.length === 0 && <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>Нет героев</div>}
-        {playerHeroes.map((h) => (
+        {playerHeroes.length === 0 && <div style={{ color: "var(--text-dim)", fontSize: 12 }}>Нет героев</div>}
+        {playerHeroes.map(h => (
           <div
             key={h.id}
-            className={`hero-card ${h.id === selectedHeroId ? 'selected' : ''}`}
+            className={`hero-card ${h.id === selectedHeroId ? "selected" : ""}`}
             onClick={() => selectHero(h.id)}
           >
             <div className="row">
@@ -207,16 +215,14 @@ export function AdventureScreen() {
         ))}
 
         <h3 style={{ marginTop: 8 }}>🏰 ГОРОДА ({playerTowns.length})</h3>
-        {playerTowns.length === 0 && <div style={{ color: 'var(--text-dim)', fontSize: 12 }}>Нет городов</div>}
-        {playerTowns.map((t) => (
+        {playerTowns.length === 0 && <div style={{ color: "var(--text-dim)", fontSize: 12 }}>Нет городов</div>}
+        {playerTowns.map(t => (
           <div key={t.id} className="town-card" onClick={() => openTown(t.id)}>
             <div className="row">
-              <span className="icon">{t.faction === 'castle' ? '🏰' : '🏯'}</span>
+              <span className="icon">{t.faction === "castle" ? "🏰" : "🏯"}</span>
               <div>
-                <div style={{ fontWeight: 'bold' }}>{t.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-                  Построено: {t.built.length}
-                </div>
+                <div style={{ fontWeight: "bold" }}>{t.name}</div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Построено: {t.built.length}</div>
               </div>
             </div>
           </div>
@@ -224,15 +230,13 @@ export function AdventureScreen() {
 
         <div className="log-panel">
           {log.slice(-12).map((l, i) => (
-            <div key={i} className="entry">{l}</div>
+            <div key={i} className="entry">
+              {l}
+            </div>
           ))}
         </div>
 
-        <button
-          className="end-turn-btn"
-          onClick={() => endTurn()}
-          disabled={!activePlayer?.isHuman}
-        >
+        <button className="end-turn-btn" onClick={() => endTurn()} disabled={!activePlayer?.isHuman}>
           Завершить ход (↵)
         </button>
       </div>
@@ -245,11 +249,16 @@ function ArmyDisplay({ hero }: { hero: Hero }) {
     <div className="army-row">
       {Array.from({ length: 7 }).map((_, idx) => {
         const stack = hero.army[idx];
-        if (!stack) return <div key={idx} className="army-slot empty">—</div>;
+        if (!stack)
+          return (
+            <div key={idx} className="army-slot empty">
+              —
+            </div>
+          );
         const unit = UNITS_LOCAL[stack.unitId];
         return (
           <div key={idx} className="army-slot" title={unit?.name ?? stack.unitId}>
-            <span className="icon">{unit?.icon ?? '?'}</span>
+            <span className="icon">{unit?.icon ?? "?"}</span>
             <span>{stack.count}</span>
           </div>
         );
@@ -258,16 +267,13 @@ function ArmyDisplay({ hero }: { hero: Hero }) {
   );
 }
 
-// Локальный импорт для удобства.
-import { UNITS as UNITS_LOCAL } from '../game/data/units';
-
 function drawMap(
   ctx: CanvasRenderingContext2D,
   tiles: Tile[],
-  map: NonNullable<ReturnType<typeof useGame.getState>['map']>,
+  map: NonNullable<ReturnType<typeof useGame.getState>["map"]>,
   heroes: Record<string, Hero>,
-  towns: Record<string, ReturnType<typeof useGame.getState>['towns'][string]>,
-  players: Record<string, ReturnType<typeof useGame.getState>['players'][string]>,
+  towns: Record<string, ReturnType<typeof useGame.getState>["towns"][string]>,
+  players: Record<string, ReturnType<typeof useGame.getState>["players"][string]>,
   camera: Coord,
   hoverPath: Coord[] | null,
   hoverTile: Coord | null,
@@ -277,7 +283,7 @@ function drawMap(
   const H = map.height;
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
-  ctx.fillStyle = '#000';
+  ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, cw, ch);
 
   const startX = Math.max(0, Math.floor(camera.x / TILE_SIZE));
@@ -290,10 +296,10 @@ function drawMap(
       const t = tiles[y * W + x];
       const sx = x * TILE_SIZE - camera.x;
       const sy = y * TILE_SIZE - camera.y;
-      ctx.fillStyle = TERRAIN_COLOR[t.terrain] ?? '#444';
+      ctx.fillStyle = TERRAIN_COLOR[t.terrain] ?? "#444";
       ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
       // Сетка.
-      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+      ctx.strokeStyle = "rgba(0,0,0,0.15)";
       ctx.strokeRect(sx + 0.5, sy + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
     }
   }
@@ -303,11 +309,11 @@ function drawMap(
     const sx = obj.pos.x * TILE_SIZE - camera.x;
     const sy = obj.pos.y * TILE_SIZE - camera.y;
     if (sx < -TILE_SIZE || sy < -TILE_SIZE || sx > cw || sy > ch) continue;
-    if (obj.kind === 'dwelling') {
+    if (obj.kind === "dwelling") {
       // Город.
       const tw = towns[obj.id];
       if (tw) {
-        const ownerColor = tw.ownerId ? players[tw.ownerId]?.color ?? '#888' : '#888';
+        const ownerColor = tw.ownerId ? (players[tw.ownerId]?.color ?? "#888") : "#888";
         ctx.fillStyle = ownerColor;
         ctx.fillRect(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4);
       }
@@ -323,7 +329,7 @@ function drawMap(
     const sy = h.pos.y * TILE_SIZE - camera.y;
     if (sx < -TILE_SIZE || sy < -TILE_SIZE || sx > cw || sy > ch) continue;
     const owner = players[h.ownerId];
-    const color = owner?.color ?? '#888';
+    const color = owner?.color ?? "#888";
     // Фон-флажок.
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -331,7 +337,7 @@ function drawMap(
     ctx.fill();
     // Подсветка выбранного.
     if (h.id === selectedHeroId) {
-      ctx.strokeStyle = '#ffd966';
+      ctx.strokeStyle = "#ffd966";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, TILE_SIZE / 2 - 2, 0, Math.PI * 2);
@@ -355,7 +361,7 @@ function drawMap(
         mp -= cost;
         const sx = p.x * TILE_SIZE - camera.x + TILE_SIZE / 2;
         const sy = p.y * TILE_SIZE - camera.y + TILE_SIZE / 2;
-        ctx.fillStyle = reachable ? 'rgba(255, 220, 80, 0.7)' : 'rgba(255, 80, 80, 0.6)';
+        ctx.fillStyle = reachable ? "rgba(255, 220, 80, 0.7)" : "rgba(255, 80, 80, 0.6)";
         ctx.beginPath();
         ctx.arc(sx, sy, 5, 0, Math.PI * 2);
         ctx.fill();
@@ -367,7 +373,7 @@ function drawMap(
   if (hoverTile) {
     const sx = hoverTile.x * TILE_SIZE - camera.x;
     const sy = hoverTile.y * TILE_SIZE - camera.y;
-    ctx.strokeStyle = '#ffd966';
+    ctx.strokeStyle = "#ffd966";
     ctx.lineWidth = 2;
     ctx.strokeRect(sx + 1, sy + 1, TILE_SIZE - 2, TILE_SIZE - 2);
     ctx.lineWidth = 1;
@@ -381,18 +387,18 @@ function drawMap(
 
 function drawEmoji(ctx: CanvasRenderingContext2D, txt: string, cx: number, cy: number, size: number) {
   ctx.font = `${size}px serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#fff';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff";
   ctx.fillText(txt, cx, cy);
 }
 
 function drawMinimap(
   ctx: CanvasRenderingContext2D,
-  map: NonNullable<ReturnType<typeof useGame.getState>['map']>,
+  map: NonNullable<ReturnType<typeof useGame.getState>["map"]>,
   heroes: Record<string, Hero>,
-  towns: Record<string, ReturnType<typeof useGame.getState>['towns'][string]>,
-  players: Record<string, ReturnType<typeof useGame.getState>['players'][string]>,
+  towns: Record<string, ReturnType<typeof useGame.getState>["towns"][string]>,
+  players: Record<string, ReturnType<typeof useGame.getState>["players"][string]>,
   camera: Coord,
   cw: number,
   ch: number,
@@ -403,23 +409,23 @@ function drawMinimap(
   const mmH = px * map.height;
   const ox = cw - mmW - 12;
   const oy = ch - mmH - 12;
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillStyle = "rgba(0,0,0,0.7)";
   ctx.fillRect(ox - 4, oy - 4, mmW + 8, mmH + 8);
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
       const t = map.tiles[y * map.width + x];
-      ctx.fillStyle = t.passable ? (TERRAIN_COLOR[t.terrain] ?? '#444') : '#222';
+      ctx.fillStyle = t.passable ? (TERRAIN_COLOR[t.terrain] ?? "#444") : "#222";
       ctx.fillRect(ox + x * px, oy + y * px, px, px);
     }
   }
   // Города и герои.
   for (const tw of Object.values(towns)) {
-    const owner = tw.ownerId ? players[tw.ownerId]?.color ?? '#fff' : '#999';
+    const owner = tw.ownerId ? (players[tw.ownerId]?.color ?? "#fff") : "#999";
     ctx.fillStyle = owner;
     ctx.fillRect(ox + tw.pos.x * px - 1, oy + tw.pos.y * px - 1, px + 2, px + 2);
   }
   for (const h of Object.values(heroes)) {
-    ctx.fillStyle = players[h.ownerId]?.color ?? '#fff';
+    ctx.fillStyle = players[h.ownerId]?.color ?? "#fff";
     ctx.fillRect(ox + h.pos.x * px, oy + h.pos.y * px, px, px);
   }
   // Рамка вьюпорта.
@@ -427,6 +433,6 @@ function drawMinimap(
   const vy = oy + Math.floor((camera.y / TILE_SIZE) * px);
   const vw = Math.floor((cw / TILE_SIZE) * px);
   const vh = Math.floor((ch / TILE_SIZE) * px);
-  ctx.strokeStyle = '#ffd966';
+  ctx.strokeStyle = "#ffd966";
   ctx.strokeRect(vx, vy, Math.min(vw, mmW - (vx - ox)), Math.min(vh, mmH - (vy - oy)));
 }

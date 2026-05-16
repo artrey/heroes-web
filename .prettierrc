@@ -7,11 +7,5 @@
   "useTabs": false,
   "tabWidth": 2,
   "semi": true,
-  "importOrder": [
-    "<THIRD_PARTY_MODULES>",
-    "",
-    "^\\.\\.?/",
-    "",
-    ".s?css$"
-  ]
+  "importOrder": ["<THIRD_PARTY_MODULES>", "", "^@/", "", "^\\.\\.?/", "", "^.+\\.s?css$"]
 }

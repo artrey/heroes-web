@@ -1,7 +1,13 @@
-import type { ResourceBag } from '../types';
+import type { ResourceBag } from "../types";
 
 export const EMPTY_BAG: ResourceBag = {
-  gold: 0, wood: 0, ore: 0, mercury: 0, sulfur: 0, crystal: 0, gems: 0,
+  gold: 0,
+  wood: 0,
+  ore: 0,
+  mercury: 0,
+  sulfur: 0,
+  crystal: 0,
+  gems: 0,
 };
 
 export function emptyBag(): ResourceBag {
@@ -35,10 +41,21 @@ export function add(a: ResourceBag, b: Partial<ResourceBag>): ResourceBag {
 }
 
 export const RESOURCE_ICONS: Record<keyof ResourceBag, string> = {
-  gold: '🪙', wood: '🪵', ore: '⛏️', mercury: '🧪', sulfur: '🟡', crystal: '💎', gems: '💍',
+  gold: "🪙",
+  wood: "🪵",
+  ore: "⛏️",
+  mercury: "🧪",
+  sulfur: "🟡",
+  crystal: "💎",
+  gems: "💍",
 };
 
 export const RESOURCE_NAMES: Record<keyof ResourceBag, string> = {
-  gold: 'Золото', wood: 'Дерево', ore: 'Руда', mercury: 'Ртуть',
-  sulfur: 'Сера', crystal: 'Кристаллы', gems: 'Самоцветы',
+  gold: "Золото",
+  wood: "Дерево",
+  ore: "Руда",
+  mercury: "Ртуть",
+  sulfur: "Сера",
+  crystal: "Кристаллы",
+  gems: "Самоцветы",
 };

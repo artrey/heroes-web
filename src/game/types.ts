@@ -1,12 +1,12 @@
 // Игровые типы. Терминология близка к HoMM3 / HotA.
 
-export type Faction = 'castle' | 'rampart';
+export type Faction = "castle" | "rampart";
 
-export type Resource = 'gold' | 'wood' | 'ore' | 'mercury' | 'sulfur' | 'crystal' | 'gems';
+export type Resource = "gold" | "wood" | "ore" | "mercury" | "sulfur" | "crystal" | "gems";
 
 export type ResourceBag = Record<Resource, number>;
 
-export type Terrain = 'grass' | 'dirt' | 'sand' | 'snow' | 'forest' | 'mountain' | 'water' | 'lava' | 'rough';
+export type Terrain = "grass" | "dirt" | "sand" | "snow" | "forest" | "mountain" | "water" | "lava" | "rough";
 
 export interface Coord {
   x: number;
@@ -79,15 +79,15 @@ export interface Town {
 }
 
 export type ObjectKind =
-  | 'resource'
-  | 'mine'
-  | 'dwelling'
-  | 'monster'
-  | 'artifact'
-  | 'chest'
-  | 'sign'
-  | 'tree'
-  | 'mountain';
+  | "resource"
+  | "mine"
+  | "dwelling"
+  | "monster"
+  | "artifact"
+  | "chest"
+  | "sign"
+  | "tree"
+  | "mountain";
 
 export interface MapObject {
   id: string;
@@ -137,14 +137,14 @@ export interface Player {
   townIds: string[];
 }
 
-export type Phase = 'menu' | 'newGame' | 'adventure' | 'town' | 'battle' | 'gameOver';
+export type Phase = "menu" | "newGame" | "adventure" | "town" | "battle" | "gameOver";
 
 export interface BattleStack {
   id: string;
   unitId: string;
   count: number;
   hp: number; // hp текущего верхнего юнита (для подсчёта потерь)
-  side: 'attacker' | 'defender';
+  side: "attacker" | "defender";
   pos: Coord; // позиция на гекс-поле (двойные координаты)
   hasActed: boolean;
   hasRetaliated: boolean;
@@ -160,7 +160,7 @@ export interface BattleState {
   turnOrder: string[]; // id stacks по инициативе
   activeStackIdx: number;
   round: number;
-  winner: 'attacker' | 'defender' | null;
+  winner: "attacker" | "defender" | null;
   log: string[];
 }
 
