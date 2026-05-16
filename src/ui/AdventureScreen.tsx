@@ -8,6 +8,7 @@ import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
 import { findPath, isPassable, pathCost, STEP_STRAIGHT, stepCost } from "../game/utils/pathfind";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { computeVisibleTiles } from "../game/utils/visibility";
+import { getTerrainBaseColor, getTerrainTile } from "./terrainPatterns";
 
 const TILE_SIZE = 32;
 
@@ -388,9 +389,14 @@ function drawMap(
         // Тайл никогда не видели — оставляем чёрный фон.
         continue;
       }
-      ctx.fillStyle = TERRAIN_COLOR[t.terrain] ?? "#444";
-      ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
-      ctx.strokeStyle = "rgba(0,0,0,0.15)";
+      const tile = getTerrainTile(t.terrain);
+      if (tile) {
+        ctx.drawImage(tile, sx, sy, TILE_SIZE, TILE_SIZE);
+      } else {
+        ctx.fillStyle = TERRAIN_COLOR[t.terrain] ?? "#444";
+        ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
+      }
+      ctx.strokeStyle = "rgba(0,0,0,0.18)";
       ctx.strokeRect(sx + 0.5, sy + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
       if (!isVisible) {
         // «Память» — затемнение поверх террейна.
@@ -406,23 +412,23 @@ function drawMap(
     const sx = obj.pos.x * TILE_SIZE - camera.x;
     const sy = obj.pos.y * TILE_SIZE - camera.y;
     if (sx < -TILE_SIZE || sy < -TILE_SIZE || sx > cw || sy > ch) continue;
+    const cx = sx + TILE_SIZE / 2;
+    const cy = sy + TILE_SIZE / 2;
     if (obj.kind === "dwelling") {
       const tw = towns[obj.id];
-      if (tw) {
-        const ownerColor = tw.ownerId ? (players[tw.ownerId]?.color ?? "#888") : "#888";
-        ctx.fillStyle = ownerColor;
-        ctx.fillRect(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4);
-      }
-      drawEmoji(ctx, obj.icon, sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, 24);
+      const ownerColor = tw?.ownerId ? (players[tw.ownerId]?.color ?? "#888") : "#888";
+      drawBuildingPlaque(ctx, sx, sy, ownerColor);
+      drawEmoji(ctx, obj.icon, cx, cy, 24);
     } else if (obj.kind === "mine") {
-      // Захваченную шахту красим в цвет владельца, как город.
       if (obj.ownerId) {
-        ctx.fillStyle = players[obj.ownerId]?.color ?? "#888";
-        ctx.fillRect(sx + 2, sy + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+        drawBuildingPlaque(ctx, sx, sy, players[obj.ownerId]?.color ?? "#888");
+      } else {
+        drawObjectShadow(ctx, cx, cy);
       }
-      drawEmoji(ctx, obj.icon, sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, 22);
+      drawEmoji(ctx, obj.icon, cx, cy, 22);
     } else {
-      drawEmoji(ctx, obj.icon, sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, 22);
+      drawObjectShadow(ctx, cx, cy);
+      drawEmoji(ctx, obj.icon, cx, cy, 22);
     }
   }
 
@@ -434,21 +440,10 @@ function drawMap(
     if (sx < -TILE_SIZE || sy < -TILE_SIZE || sx > cw || sy > ch) continue;
     const owner = players[h.ownerId];
     const color = owner?.color ?? "#888";
-    // Фон-флажок.
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, TILE_SIZE / 2 - 3, 0, Math.PI * 2);
-    ctx.fill();
-    // Подсветка выбранного.
-    if (h.id === selectedHeroId) {
-      ctx.strokeStyle = "#ffd966";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, TILE_SIZE / 2 - 2, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.lineWidth = 1;
-    }
-    drawEmoji(ctx, h.icon, sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, 22);
+    const cx = sx + TILE_SIZE / 2;
+    const cy = sy + TILE_SIZE / 2;
+    drawHeroToken(ctx, cx, cy, color, h.id === selectedHeroId);
+    drawEmoji(ctx, h.icon, cx, cy, 22);
   }
 
   // Путь.
@@ -489,6 +484,94 @@ function drawMap(
   void isPassable;
 }
 
+// Жетон героя: тёмный круг под цветным фоном владельца с радиальным градиентом,
+// тонкой обводкой, тенью под собой и пульсирующей подсветкой для выбранного.
+function drawHeroToken(ctx: CanvasRenderingContext2D, cx: number, cy: number, color: string, isSelected: boolean) {
+  const r = TILE_SIZE / 2 - 3;
+  // Тень.
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + r - 2, r - 2, r / 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // Основной круг — радиальный градиент.
+  const grad = ctx.createRadialGradient(cx - r / 3, cy - r / 3, 0, cx, cy, r);
+  grad.addColorStop(0, lighten(color, 0.35));
+  grad.addColorStop(1, darken(color, 0.25));
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  // Обводка.
+  ctx.strokeStyle = darken(color, 0.5);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  if (isSelected) {
+    ctx.strokeStyle = "#ffd966";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r + 1, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.lineWidth = 1;
+}
+
+// Подложка под город/шахту: чуть приподнятый квадрат с градиентом-«крышей»
+// и тенью под собой.
+function drawBuildingPlaque(ctx: CanvasRenderingContext2D, sx: number, sy: number, color: string) {
+  const pad = 2;
+  const grad = ctx.createLinearGradient(sx, sy, sx, sy + TILE_SIZE);
+  grad.addColorStop(0, lighten(color, 0.25));
+  grad.addColorStop(1, darken(color, 0.3));
+  // Тень.
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.fillRect(sx + pad + 1, sy + TILE_SIZE - 4, TILE_SIZE - 2 * pad - 2, 3);
+  ctx.restore();
+  // Корпус.
+  ctx.fillStyle = grad;
+  ctx.fillRect(sx + pad, sy + pad, TILE_SIZE - 2 * pad, TILE_SIZE - 2 * pad);
+  ctx.strokeStyle = darken(color, 0.55);
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(sx + pad + 0.5, sy + pad + 0.5, TILE_SIZE - 2 * pad - 1, TILE_SIZE - 2 * pad - 1);
+  ctx.lineWidth = 1;
+}
+
+// Лёгкая овальная тень под объектом без подложки (ресурсы, артефакты, сундуки).
+function drawObjectShadow(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + TILE_SIZE / 3, TILE_SIZE / 3, TILE_SIZE / 9, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Простые light/dark манипуляции с HEX — без зависимостей на color libs.
+function lighten(hex: string, amount: number): string {
+  return mixHex(hex, "#ffffff", amount);
+}
+function darken(hex: string, amount: number): string {
+  return mixHex(hex, "#000000", amount);
+}
+function mixHex(a: string, b: string, t: number): string {
+  const pa = parseHex(a);
+  const pb = parseHex(b);
+  const r = Math.round(pa[0] * (1 - t) + pb[0] * t);
+  const g = Math.round(pa[1] * (1 - t) + pb[1] * t);
+  const bl = Math.round(pa[2] * (1 - t) + pb[2] * t);
+  return `rgb(${r}, ${g}, ${bl})`;
+}
+function parseHex(s: string): [number, number, number] {
+  const m = /^#?([0-9a-f]{6})$/i.exec(s);
+  if (m) {
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  }
+  return [128, 128, 128];
+}
+
 function drawEmoji(ctx: CanvasRenderingContext2D, txt: string, cx: number, cy: number, size: number) {
   ctx.font = `${size}px serif`;
   ctx.textAlign = "center";
@@ -526,7 +609,7 @@ function drawMinimap(
         continue;
       }
       const t = map.tiles[y * map.width + x];
-      ctx.fillStyle = t.passable ? (TERRAIN_COLOR[t.terrain] ?? "#444") : "#222";
+      ctx.fillStyle = t.passable ? getTerrainBaseColor(t.terrain) : "#222";
       ctx.fillRect(ox + x * px, oy + y * px, px, px);
       if (!visible.has(key)) {
         ctx.fillStyle = "rgba(0,0,0,0.5)";

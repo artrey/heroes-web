@@ -222,16 +222,24 @@ function drawBattle(
   if (!battle) return;
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
-  ctx.fillStyle = "#3a2e1a";
+  // Фон поля — вертикальный градиент землистого цвета.
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, ch);
+  bgGrad.addColorStop(0, "#3a2e1a");
+  bgGrad.addColorStop(1, "#1f1810");
+  ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, cw, ch);
-  // Сетка.
+  // Сетка — с тонкой текстурой через псевдослучайные точки.
   for (let y = 0; y < BATTLE_H; y++) {
     for (let x = 0; x < BATTLE_W; x++) {
       const px = 20 + x * HEX_W;
       const py = 20 + y * HEX_H;
-      ctx.fillStyle = (x + y) % 2 === 0 ? "#4a3a26" : "#3e3020";
+      const isEven = (x + y) % 2 === 0;
+      const cellGrad = ctx.createLinearGradient(px, py, px, py + HEX_H);
+      cellGrad.addColorStop(0, isEven ? "#5a4a32" : "#4a3a26");
+      cellGrad.addColorStop(1, isEven ? "#3e3020" : "#2e2418");
+      ctx.fillStyle = cellGrad;
       ctx.fillRect(px, py, HEX_W, HEX_H);
-      ctx.strokeStyle = "rgba(0,0,0,0.3)";
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
       ctx.strokeRect(px + 0.5, py + 0.5, HEX_W - 1, HEX_H - 1);
     }
   }
@@ -264,11 +272,25 @@ function drawBattle(
     const py = 20 + s.pos.y * HEX_H;
     const cx = px + HEX_W / 2;
     const cy = py + HEX_H / 2;
-    // Фоновый круг — цвет стороны.
-    ctx.fillStyle = s.side === "attacker" ? "#3a7a30" : "#8a3020";
+    const baseColor = s.side === "attacker" ? "#3a7a30" : "#8a3020";
+    // Тень под жетоном.
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 16, 17, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    // Фоновый круг — радиальный градиент по стороне.
+    const tokenGrad = ctx.createRadialGradient(cx - 6, cy - 6, 0, cx, cy, 19);
+    tokenGrad.addColorStop(0, battleLighten(baseColor, 0.35));
+    tokenGrad.addColorStop(1, battleDarken(baseColor, 0.3));
+    ctx.fillStyle = tokenGrad;
     ctx.beginPath();
     ctx.arc(cx, cy, 18, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = battleDarken(baseColor, 0.5);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
     // Подсветка активного.
     if (act && act.id === s.id) {
       ctx.strokeStyle = "#ffd966";
@@ -276,24 +298,58 @@ function drawBattle(
       ctx.beginPath();
       ctx.arc(cx, cy, 20, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.lineWidth = 1;
     }
+    ctx.lineWidth = 1;
+    // HP-полоса над жетоном.
+    const fullHp = unit.hp * s.count;
+    const curHp = Math.max(0, (s.count - 1) * unit.hp + s.hp);
+    const hpPct = Math.max(0, Math.min(1, curHp / fullHp));
+    drawHpBar(ctx, cx - 16, cy - 22, 32, 4, hpPct);
     // Эмодзи.
     ctx.font = "24px serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#fff";
     ctx.fillText(unit.icon, cx, cy - 2);
-    // Число.
+    // Число существ.
     ctx.font = "bold 11px sans-serif";
-    ctx.fillStyle = "#fff";
     const txt = String(s.count);
     const tw = ctx.measureText(txt).width;
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(cx - tw / 2 - 3, cy + 12, tw + 6, 12);
+    ctx.fillStyle = "rgba(0,0,0,0.78)";
+    ctx.fillRect(cx - tw / 2 - 4, cy + 11, tw + 8, 13);
     ctx.fillStyle = "#fff";
     ctx.fillText(txt, cx, cy + 18);
   }
+}
+
+function drawHpBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, pct: number) {
+  ctx.fillStyle = "rgba(0,0,0,0.65)";
+  ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = "#2a2018";
+  ctx.fillRect(x, y, w, h);
+  const color = pct > 0.6 ? "#5fa850" : pct > 0.3 ? "#d4a64a" : "#c44030";
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, Math.max(0, w * pct), h);
+}
+
+// Локальные helpers для манипуляции цветом в боевом канвасе.
+function battleLighten(hex: string, t: number): string {
+  return mixBattle(hex, [255, 255, 255], t);
+}
+function battleDarken(hex: string, t: number): string {
+  return mixBattle(hex, [0, 0, 0], t);
+}
+function mixBattle(a: string, b: [number, number, number], t: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(a);
+  let pa: [number, number, number] = [128, 128, 128];
+  if (m) {
+    const n = parseInt(m[1], 16);
+    pa = [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+  }
+  const r = Math.round(pa[0] * (1 - t) + b[0] * t);
+  const g = Math.round(pa[1] * (1 - t) + b[1] * t);
+  const bl = Math.round(pa[2] * (1 - t) + b[2] * t);
+  return `rgb(${r}, ${g}, ${bl})`;
 }
 
 function BattleTooltip({
