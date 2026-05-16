@@ -226,6 +226,8 @@ export interface GameState {
   selectedTownId: string | null;
   meetingHeroIds: [string, string] | null;
   pendingObjectVisit: string | null;
+  // Цель, к которой герой направлялся через бой со стражей: после победы движение продолжается.
+  pendingMoveAfterCombat: { heroId: string; target: Coord } | null;
   options: NewGameOptions | null;
   log: string[];
   winnerId: string | null;

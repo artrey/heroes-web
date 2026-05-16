@@ -95,6 +95,7 @@ const initialState: GameState = {
   selectedTownId: null,
   meetingHeroIds: null,
   pendingObjectVisit: null,
+  pendingMoveAfterCombat: null,
   options: null,
   log: [],
   winnerId: null,
@@ -298,12 +299,44 @@ export const useGame = create<GameState & Actions>()(
         if (hero.ownerId !== s.activePlayerId) return "blocked";
 
         const danger = computeDanger(s.map, s.heroes, hero.ownerId);
-        const path = findPath(s.map, hero.pos, target, {
+        // Если игрок целится в интерактивный объект под охраной, путь сначала ведём
+        // к ближайшему стражу — после победы движение к исходной цели возобновится.
+        let actualTarget = target;
+        let pending: { heroId: string; target: Coord } | null = null;
+        const targetKey = `${target.x},${target.y}`;
+        const targetTile = s.map.tiles[target.y * s.map.width + target.x];
+        const targetObj = targetTile.objectId ? s.map.objects[targetTile.objectId] : null;
+        const isInteractive =
+          !!targetObj &&
+          (targetObj.kind === "resource" ||
+            targetObj.kind === "chest" ||
+            targetObj.kind === "artifact" ||
+            targetObj.kind === "mine" ||
+            targetObj.kind === "dwelling");
+        if (isInteractive && danger.cells.has(targetKey)) {
+          let guard: Coord | null = null;
+          let bestDist = Infinity;
+          for (const srcKey of danger.sources) {
+            const [gx, gy] = srcKey.split(",").map(Number);
+            if (Math.max(Math.abs(gx - target.x), Math.abs(gy - target.y)) !== 1) continue;
+            const d = Math.max(Math.abs(gx - hero.pos.x), Math.abs(gy - hero.pos.y));
+            if (d < bestDist) {
+              bestDist = d;
+              guard = { x: gx, y: gy };
+            }
+          }
+          if (guard) {
+            actualTarget = guard;
+            pending = { heroId: hero.id, target };
+          }
+        }
+        const path = findPath(s.map, hero.pos, actualTarget, {
           revealed: activePlayer.revealed,
           dangerCells: danger.cells,
           dangerSources: danger.sources,
         });
         if (!path || path.length === 0) return "noPath";
+        if (pending !== s.pendingMoveAfterCombat) set({ pendingMoveAfterCombat: pending });
 
         // Идём по пути, пока хватает MP. На каждом шаге проверяем, не наступили ли на объект.
         let mp = hero.movePoints;
@@ -884,6 +917,21 @@ export const useGame = create<GameState & Actions>()(
           players: newPlayers,
           towns: newTowns,
         });
+        // Если шли в бой к страже, чтобы подобрать охраняемый объект — продолжить движение к нему.
+        const pending = get().pendingMoveAfterCombat;
+        if (pending) {
+          set({ pendingMoveAfterCombat: null });
+          const heroAfter = get().heroes[pending.heroId];
+          if (heroAfter && heroAfter.movePoints >= STEP_STRAIGHT && get().phase === "adventure") {
+            setTimeout(() => {
+              const cur = useGame.getState();
+              if (cur.phase !== "adventure") return;
+              if (!cur.heroes[pending.heroId]) return;
+              useGame.setState({ selectedHeroId: pending.heroId });
+              cur.moveHeroTo(pending.target);
+            }, 0);
+          }
+        }
         // Если остался только один не-побеждённый игрок — конец игры.
         const alive = Object.values(get().players).filter(p => !p.defeated);
         if (alive.length === 1) {
@@ -916,6 +964,7 @@ export const useGame = create<GameState & Actions>()(
           heroes: restHeroes,
           players,
           log,
+          pendingMoveAfterCombat: null,
         });
         // Проверка победы.
         const alive = Object.values(get().players).filter(p => !p.defeated);
