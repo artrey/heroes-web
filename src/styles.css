@@ -479,32 +479,42 @@ select {
   opacity: 0.65;
 }
 .building-card.locked-today {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
   border-style: dashed;
-  position: relative;
 }
-.building-card.locked-today::after {
-  content: "🔒 сегодня";
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  font-size: 10px;
-  color: var(--danger);
-  background: rgba(0, 0, 0, 0.6);
-  padding: 1px 5px;
-  border-radius: 2px;
+.building-card .bc-row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 .building-card .icon {
-  font-size: 28px;
+  font-size: 26px;
+  line-height: 1;
+}
+.building-card .bc-status {
+  font-size: 11px;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
 }
 .building-card .name {
   font-weight: bold;
-  margin: 4px 0;
+  font-size: 14px;
+  margin: 0 0 4px;
+  line-height: 1.2;
 }
 .building-card .desc {
   font-size: 12px;
   color: var(--text-dim);
+  line-height: 1.3;
+}
+.building-card .prereq {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 6px;
+  font-style: italic;
 }
 .building-card .cost {
   font-size: 11px;

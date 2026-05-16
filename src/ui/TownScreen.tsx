@@ -118,12 +118,29 @@ export function TownScreen() {
                           : undefined
                   }
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div className="bc-row1">
                     <span className="icon">{b.icon}</span>
-                    <div className="name">{b.name}</div>
-                    {built && <span style={{ marginLeft: "auto", color: "var(--good)" }}>✓</span>}
+                    <span className="bc-status">
+                      {built ? (
+                        <span style={{ color: "var(--good)" }}>✓ построено</span>
+                      ) : !prereqsOk ? (
+                        <span style={{ color: "var(--text-dim)" }}>🔒 требования</span>
+                      ) : !affordable ? (
+                        <span style={{ color: "var(--danger)" }}>💰 нет ресурсов</span>
+                      ) : lockedByDay ? (
+                        <span style={{ color: "var(--danger)" }}>🔒 сегодня</span>
+                      ) : (
+                        <span style={{ color: "var(--good)" }}>можно построить</span>
+                      )}
+                    </span>
                   </div>
+                  <div className="name">{b.name}</div>
                   <div className="desc">{b.description}</div>
+                  {!built && b.prereq && b.prereq.length > 0 && (
+                    <div className="prereq">
+                      Требуется: {b.prereq.map(p => getBuilding(town.faction, p)?.name ?? p).join(", ")}
+                    </div>
+                  )}
                   {!built && (
                     <div className="cost">
                       {Object.entries(b.cost).map(([k, v]) => (
