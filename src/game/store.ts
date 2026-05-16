@@ -22,11 +22,13 @@ import type {
   Town,
   UnitStack,
 } from "./types";
+import { VISION_RADIUS_HERO, VISION_RADIUS_TOWN } from "./types";
 import { getEffectiveMaxMP } from "./utils/heroBonus";
 import { makeId, resetIdCounter } from "./utils/id";
 import { chebyshev, findPath, isPassable, pathCost } from "./utils/pathfind";
 import { add, canAfford, emptyBag, pay, RESOURCE_NAMES } from "./utils/resources";
 import { mulberry32, randChoice, randInt } from "./utils/rng";
+import { fullyRevealed, revealForPlayer } from "./utils/visibility";
 
 const PLAYER_COLORS = ["#d04040", "#4080d0", "#40b040", "#d0a040", "#a040b0", "#40b0b0", "#d04080", "#808080"];
 
@@ -230,7 +232,7 @@ export const useGame = create<GameState & Actions>()(
 
           // Игрок.
           const res: ResourceBag = { gold: 10000, wood: 20, ore: 20, mercury: 5, sulfur: 5, crystal: 5, gems: 5 };
-          players[pid] = {
+          let player: Player = {
             id: pid,
             name: i === 0 ? opts.playerName : `Противник ${i}`,
             color: PLAYER_COLORS[i],
@@ -240,7 +242,12 @@ export const useGame = create<GameState & Actions>()(
             resources: res,
             heroIds: [hid],
             townIds: [tid],
+            revealed: {},
           };
+          // Изначально игрок видит зону вокруг своего города и стартового героя.
+          player = revealForPlayer(player, town.pos, VISION_RADIUS_TOWN, map.width, map.height);
+          player = revealForPlayer(player, hero.pos, VISION_RADIUS_HERO, map.width, map.height);
+          players[pid] = player;
         }
 
         set({
@@ -346,7 +353,16 @@ export const useGame = create<GameState & Actions>()(
         }
 
         const heroes = { ...s.heroes, [hero.id]: newHero };
-        set({ heroes });
+        // Открыть тайлы вокруг новой позиции героя.
+        const updatedOwner = revealForPlayer(
+          s.players[hero.ownerId],
+          newHero.pos,
+          VISION_RADIUS_HERO,
+          s.map.width,
+          s.map.height,
+        );
+        const players = { ...s.players, [hero.ownerId]: updatedOwner };
+        set({ heroes, players });
 
         if (triggered) {
           interactWithObject(triggered, hero.id);
@@ -519,16 +535,15 @@ export const useGame = create<GameState & Actions>()(
           icon: proto.icon,
         };
 
+        const withHero: Player = {
+          ...player,
+          resources: pay(player.resources, HERO_HIRE_COST),
+          heroIds: [...player.heroIds, hid],
+        };
+        const revealedOwner = revealForPlayer(withHero, spawnPos, VISION_RADIUS_HERO, s.map.width, s.map.height);
         set({
           heroes: { ...s.heroes, [hid]: hero },
-          players: {
-            ...s.players,
-            [player.id]: {
-              ...player,
-              resources: pay(player.resources, HERO_HIRE_COST),
-              heroIds: [...player.heroIds, hid],
-            },
-          },
+          players: { ...s.players, [player.id]: revealedOwner },
           log: [...s.log, logLine(s.day, `Нанят герой: ${hero.name}`)],
           selectedHeroId: hid,
         });
@@ -756,7 +771,14 @@ export const useGame = create<GameState & Actions>()(
                   };
                 }
                 const newOwner = newPlayers[attacker.ownerId];
-                newPlayers[attacker.ownerId] = { ...newOwner, townIds: [...newOwner.townIds, town.id] };
+                const withTown: Player = { ...newOwner, townIds: [...newOwner.townIds, town.id] };
+                newPlayers[attacker.ownerId] = revealForPlayer(
+                  withTown,
+                  town.pos,
+                  VISION_RADIUS_TOWN,
+                  map.width,
+                  map.height,
+                );
                 newTowns[town.id] = { ...town, ownerId: attacker.ownerId, garrison: [] };
                 newObjects[town.id] = { ...obj, ownerId: attacker.ownerId };
                 log.push(logLine(s.day, `Город "${town.name}" захвачен!`));
@@ -842,11 +864,10 @@ export const useGame = create<GameState & Actions>()(
     }),
     {
       name: "heroes-web-save",
-      version: 2,
+      version: 3,
       migrate: (persisted, fromVersion) => {
-        // v1 → v2: artifacts на герое теперь { equipped, backpack } вместо string[].
-        // BattleState получил поля attackerBonus / defenderBonus.
         const state = persisted as Partial<GameState>;
+        // v1 → v2: artifacts на герое теперь { equipped, backpack } вместо string[].
         if (fromVersion < 2 && state?.heroes) {
           for (const h of Object.values(state.heroes)) {
             const legacy = h.artifacts as unknown;
@@ -856,10 +877,18 @@ export const useGame = create<GameState & Actions>()(
               h.artifacts = { equipped: {}, backpack: [] };
             }
           }
-          // Активный бой из старой версии не воссоздать корректно — сбросим, чтобы избежать рассинхрона.
+          // Активный бой из старой версии не воссоздать корректно — сбросим.
           if (state.battle) {
             state.battle = null;
             if (state.phase === "battle") state.phase = "adventure";
+          }
+        }
+        // v2 → v3: появилось поле Player.revealed. У старых сохранений тумана не было —
+        // открываем им всю карту, чтобы не наказывать игрока ретроактивно.
+        if (fromVersion < 3 && state?.players && state.map) {
+          const all = fullyRevealed(state.map.width, state.map.height);
+          for (const p of Object.values(state.players)) {
+            if (!p.revealed) p.revealed = { ...all };
           }
         }
         return state as GameState;
@@ -1082,9 +1111,11 @@ function captureTown(townId: string, newOwnerId: string) {
     players[town.ownerId] = { ...oldOwner, townIds: oldOwner.townIds.filter(t => t !== townId) };
   }
   const newOwner = players[newOwnerId];
-  players[newOwnerId] = { ...newOwner, townIds: [...newOwner.townIds, townId] };
-  const newTown: Town = { ...town, ownerId: newOwnerId };
+  const withTown: Player = { ...newOwner, townIds: [...newOwner.townIds, townId] };
   const map = s.map!;
+  // Захват открывает округу города новому владельцу.
+  players[newOwnerId] = revealForPlayer(withTown, town.pos, VISION_RADIUS_TOWN, map.width, map.height);
+  const newTown: Town = { ...town, ownerId: newOwnerId };
   const newObjects = { ...map.objects, [townId]: { ...map.objects[townId], ownerId: newOwnerId } };
   useGame.setState({
     players,
@@ -1253,8 +1284,13 @@ function moveAiHero(heroId: string, target: Coord) {
       }
     }
   }
+  const owner = useGame.getState().players[hero.ownerId];
+  const updatedOwner = owner ? revealForPlayer(owner, curPos, VISION_RADIUS_HERO, s.map.width, s.map.height) : owner;
   useGame.setState({
     heroes: { ...useGame.getState().heroes, [heroId]: { ...hero, pos: curPos, movePoints: mp } },
+    players: updatedOwner
+      ? { ...useGame.getState().players, [hero.ownerId]: updatedOwner }
+      : useGame.getState().players,
   });
   if (battleWithHero) {
     const defender = useGame.getState().heroes[battleWithHero];

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 // Локальный импорт для удобства.
 import { UNITS as UNITS_LOCAL } from "../game/data/units";
@@ -6,6 +6,7 @@ import { useGame } from "../game/store";
 import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
 import { findPath, isPassable } from "../game/utils/pathfind";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
+import { computeVisibleTiles } from "../game/utils/visibility";
 
 const TILE_SIZE = 32;
 
@@ -47,6 +48,16 @@ export function AdventureScreen() {
   const [hoverTile, setHoverTile] = useState<Coord | null>(null);
 
   const activePlayer = players[activePlayerId];
+  // Туман войны рисуем с точки зрения первого игрока-человека, чтобы при ходе ИИ
+  // карта не «перепрыгивала» на чужие тайлы.
+  const humanId = Object.values(players).find(p => p.isHuman)?.id ?? activePlayerId;
+  const humanPlayer = players[humanId];
+  const revealed = humanPlayer?.revealed ?? {};
+  const visible = useMemo(
+    () => computeVisibleTiles(useGame.getState(), humanId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [heroes, towns, players, humanId],
+  );
 
   // Центрируем камеру на выбранном герое при первом монтировании / смене героя.
   useEffect(() => {
@@ -67,8 +78,21 @@ export function AdventureScreen() {
     if (!map || !canvasRef.current) return;
     const ctx = canvasRef.current.getContext("2d");
     if (!ctx) return;
-    drawMap(ctx, map.tiles, map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId);
-  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId]);
+    drawMap(
+      ctx,
+      map.tiles,
+      map,
+      heroes,
+      towns,
+      players,
+      camera,
+      hoverPath,
+      hoverTile,
+      selectedHeroId,
+      revealed,
+      visible,
+    );
+  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible]);
 
   // Автоскролл лога вниз при появлении новых записей.
   useEffect(() => {
@@ -86,13 +110,27 @@ export function AdventureScreen() {
       // Перерисовать.
       if (map) {
         const ctx = c.getContext("2d");
-        if (ctx) drawMap(ctx, map.tiles, map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId);
+        if (ctx)
+          drawMap(
+            ctx,
+            map.tiles,
+            map,
+            heroes,
+            towns,
+            players,
+            camera,
+            hoverPath,
+            hoverTile,
+            selectedHeroId,
+            revealed,
+            visible,
+          );
       }
     }
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
-  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId]);
+  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible]);
 
   if (!map) return null;
 
@@ -293,6 +331,8 @@ function drawMap(
   hoverPath: Coord[] | null,
   hoverTile: Coord | null,
   selectedHeroId: string | null,
+  revealed: Record<string, true>,
+  visible: Set<string>,
 ) {
   const W = map.width;
   const H = map.height;
@@ -311,21 +351,32 @@ function drawMap(
       const t = tiles[y * W + x];
       const sx = x * TILE_SIZE - camera.x;
       const sy = y * TILE_SIZE - camera.y;
+      const key = `${x},${y}`;
+      const isRevealed = revealed[key] === true;
+      const isVisible = visible.has(key);
+      if (!isRevealed) {
+        // Тайл никогда не видели — оставляем чёрный фон.
+        continue;
+      }
       ctx.fillStyle = TERRAIN_COLOR[t.terrain] ?? "#444";
       ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
-      // Сетка.
       ctx.strokeStyle = "rgba(0,0,0,0.15)";
       ctx.strokeRect(sx + 0.5, sy + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
+      if (!isVisible) {
+        // «Память» — затемнение поверх террейна.
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
+      }
     }
   }
 
-  // Объекты карты.
+  // Объекты карты — только если тайл когда-либо видели.
   for (const obj of Object.values(map.objects)) {
+    if (revealed[`${obj.pos.x},${obj.pos.y}`] !== true) continue;
     const sx = obj.pos.x * TILE_SIZE - camera.x;
     const sy = obj.pos.y * TILE_SIZE - camera.y;
     if (sx < -TILE_SIZE || sy < -TILE_SIZE || sx > cw || sy > ch) continue;
     if (obj.kind === "dwelling") {
-      // Город.
       const tw = towns[obj.id];
       if (tw) {
         const ownerColor = tw.ownerId ? (players[tw.ownerId]?.color ?? "#888") : "#888";
@@ -338,8 +389,9 @@ function drawMap(
     }
   }
 
-  // Герои.
+  // Герои — только если стоят на видимой прямо сейчас клетке.
   for (const h of Object.values(heroes)) {
+    if (!visible.has(`${h.pos.x},${h.pos.y}`)) continue;
     const sx = h.pos.x * TILE_SIZE - camera.x;
     const sy = h.pos.y * TILE_SIZE - camera.y;
     if (sx < -TILE_SIZE || sy < -TILE_SIZE || sx > cw || sy > ch) continue;
@@ -395,7 +447,7 @@ function drawMap(
   }
 
   // Минимап в правом нижнем углу.
-  drawMinimap(ctx, map, heroes, towns, players, camera, cw, ch);
+  drawMinimap(ctx, map, heroes, towns, players, camera, cw, ch, revealed, visible);
   // Подавим warning о неиспользованном isPassable.
   void isPassable;
 }
@@ -417,6 +469,8 @@ function drawMinimap(
   camera: Coord,
   cw: number,
   ch: number,
+  revealed: Record<string, true>,
+  visible: Set<string>,
 ) {
   const mmSize = 160;
   const px = Math.max(1, Math.floor(mmSize / Math.max(map.width, map.height)));
@@ -428,18 +482,30 @@ function drawMinimap(
   ctx.fillRect(ox - 4, oy - 4, mmW + 8, mmH + 8);
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
+      const key = `${x},${y}`;
+      if (revealed[key] !== true) {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(ox + x * px, oy + y * px, px, px);
+        continue;
+      }
       const t = map.tiles[y * map.width + x];
       ctx.fillStyle = t.passable ? (TERRAIN_COLOR[t.terrain] ?? "#444") : "#222";
       ctx.fillRect(ox + x * px, oy + y * px, px, px);
+      if (!visible.has(key)) {
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(ox + x * px, oy + y * px, px, px);
+      }
     }
   }
-  // Города и герои.
+  // Города и герои на минимапе — с учётом тумана.
   for (const tw of Object.values(towns)) {
+    if (revealed[`${tw.pos.x},${tw.pos.y}`] !== true) continue;
     const owner = tw.ownerId ? (players[tw.ownerId]?.color ?? "#fff") : "#999";
     ctx.fillStyle = owner;
     ctx.fillRect(ox + tw.pos.x * px - 1, oy + tw.pos.y * px - 1, px + 2, px + 2);
   }
   for (const h of Object.values(heroes)) {
+    if (!visible.has(`${h.pos.x},${h.pos.y}`)) continue;
     ctx.fillStyle = players[h.ownerId]?.color ?? "#fff";
     ctx.fillRect(ox + h.pos.x * px, oy + h.pos.y * px, px, px);
   }

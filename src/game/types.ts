@@ -163,7 +163,11 @@ export interface Player {
   resources: ResourceBag;
   heroIds: string[];
   townIds: string[];
+  revealed: Record<string, true>; // ключ "x,y" — все тайлы, которые игрок когда-либо видел
 }
+
+export const VISION_RADIUS_HERO = 5;
+export const VISION_RADIUS_TOWN = 6;
 
 export type Phase = "menu" | "newGame" | "adventure" | "town" | "battle" | "heroMeeting" | "gameOver";
 
