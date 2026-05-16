@@ -494,6 +494,10 @@ function drawMap(
         drawObjectShadow(ctx, cx, cy);
       }
       drawEmoji(ctx, obj.icon, cx, cy, 22);
+    } else if (obj.kind === "resource" && obj.resource) {
+      // Берём текущую иконку из общей таблицы — старые сейвы могут хранить устаревший emoji.
+      drawObjectShadow(ctx, cx, cy);
+      drawEmoji(ctx, RESOURCE_ICONS[obj.resource], cx, cy, 22);
     } else {
       drawObjectShadow(ctx, cx, cy);
       drawEmoji(ctx, obj.icon, cx, cy, 22);
@@ -824,7 +828,7 @@ function MapTooltip({
       const ow = tw?.ownerId ? players[tw.ownerId] : null;
       lines.push({ title: `${obj.icon} ${tw?.name ?? "Город"}`, sub: ow ? `Владелец: ${ow.name}` : "Нейтральный" });
     } else if (obj.kind === "resource" && obj.resource) {
-      lines.push({ title: `${obj.icon} ${RESOURCE_NAMES[obj.resource]}`, sub: `+${obj.amount}` });
+      lines.push({ title: `${RESOURCE_ICONS[obj.resource]} ${RESOURCE_NAMES[obj.resource]}`, sub: `+${obj.amount}` });
     } else if (obj.kind === "mine" && obj.mineResource) {
       const ow = obj.ownerId ? players[obj.ownerId] : null;
       lines.push({

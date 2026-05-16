@@ -41,13 +41,13 @@ export function add(a: ResourceBag, b: Partial<ResourceBag>): ResourceBag {
 }
 
 export const RESOURCE_ICONS: Record<keyof ResourceBag, string> = {
-  gold: "🪙",
+  gold: "💰",
   wood: "🪵",
-  ore: "⛏️",
+  ore: "🪨",
   mercury: "🧪",
-  sulfur: "🟡",
+  sulfur: "🧽",
   crystal: "💎",
-  gems: "💍",
+  gems: "♦️",
 };
 
 export const RESOURCE_NAMES: Record<keyof ResourceBag, string> = {

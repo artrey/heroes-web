@@ -226,13 +226,13 @@ export function generateMap(input: GenInput): GenOutput {
 }
 
 const RESOURCE_ICONS_LOCAL: Record<Resource, string> = {
-  gold: "🪙",
+  gold: "💰",
   wood: "🪵",
-  ore: "⛏️",
+  ore: "🪨",
   mercury: "🧪",
-  sulfur: "🟡",
+  sulfur: "🧽",
   crystal: "💎",
-  gems: "💍",
+  gems: "♦️",
 };
 
 const MINE_ICONS: Record<Resource, string> = {
