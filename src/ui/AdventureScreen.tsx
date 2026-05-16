@@ -236,7 +236,7 @@ export function AdventureScreen() {
     <div className="adventure">
       <div className="top-bar">
         <span className="day">
-          📅 Месяц {month}, Неделя {week}, День {day}
+          📅 Месяц {month}, Неделя {((week - 1) % 4) + 1}, День {((day - 1) % 7) + 1}
         </span>
         <span style={{ color: activePlayer?.color }}>● {activePlayer?.name}</span>
         {activePlayer && !activePlayer.isHuman && <span style={{ color: "var(--accent)" }}>(ход ИИ…)</span>}
