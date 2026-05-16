@@ -2,12 +2,16 @@ import { useState } from "react";
 
 import { DIFFICULTY_PRESETS } from "../game/data/difficulty";
 import { FACTION_LIST, FACTION_META } from "../game/data/factions";
-import { TEMPLATES } from "../game/data/templates";
+import { CUSTOM_SIZE_MAX, CUSTOM_SIZE_MIN, CUSTOM_TEMPLATE_ID, TEMPLATES } from "../game/data/templates";
 import { useGame } from "../game/store";
 import type { Difficulty, Faction } from "../game/types";
 
 const DIFFICULTY_ORDER: Difficulty[] = ["easy", "normal", "hard"];
 const DIFFICULTY_ICON: Record<Difficulty, string> = { easy: "🟢", normal: "🟡", hard: "🔴" };
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
 
 export function NewGameScreen() {
   const startGame = useGame(s => s.startGame);
@@ -19,8 +23,13 @@ export function NewGameScreen() {
   const [playerName, setPlayerName] = useState("Игрок");
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0xfffffff));
   const [difficulty, setDifficulty] = useState<Difficulty>("normal");
+  const [customW, setCustomW] = useState(40);
+  const [customH, setCustomH] = useState(40);
 
   const tmpl = TEMPLATES.find(t => t.id === templateId)!;
+  const isCustom = templateId === CUSTOM_TEMPLATE_ID;
+  const finalW = isCustom ? clamp(customW, CUSTOM_SIZE_MIN, CUSTOM_SIZE_MAX) : tmpl.defaultWidth;
+  const finalH = isCustom ? clamp(customH, CUSTOM_SIZE_MIN, CUSTOM_SIZE_MAX) : tmpl.defaultHeight;
 
   return (
     <div className="new-game">
@@ -38,8 +47,10 @@ export function NewGameScreen() {
               <h4>{t.name}</h4>
               <p>{t.description}</p>
               <p style={{ marginTop: 6, fontSize: 11 }}>
-                {t.defaultWidth}×{t.defaultHeight}, оппонентов: {t.recommendedOpponents.min}–
-                {t.recommendedOpponents.max}
+                {t.id === CUSTOM_TEMPLATE_ID
+                  ? `${CUSTOM_SIZE_MIN}…${CUSTOM_SIZE_MAX} клеток`
+                  : `${t.defaultWidth}×${t.defaultHeight}`}
+                , оппонентов: {t.recommendedOpponents.min}–{t.recommendedOpponents.max}
               </p>
             </div>
           ))}
@@ -89,6 +100,33 @@ export function NewGameScreen() {
           <input value={playerName} onChange={e => setPlayerName(e.target.value)} />
         </div>
         <div className="form-row">
+          <label>Размер карты:</label>
+          <input
+            type="number"
+            min={CUSTOM_SIZE_MIN}
+            max={CUSTOM_SIZE_MAX}
+            value={finalW}
+            disabled={!isCustom}
+            onChange={e => setCustomW(clamp(+e.target.value || CUSTOM_SIZE_MIN, CUSTOM_SIZE_MIN, CUSTOM_SIZE_MAX))}
+            style={{ width: 80 }}
+          />
+          <span style={{ color: "var(--text-dim)" }}>×</span>
+          <input
+            type="number"
+            min={CUSTOM_SIZE_MIN}
+            max={CUSTOM_SIZE_MAX}
+            value={finalH}
+            disabled={!isCustom}
+            onChange={e => setCustomH(clamp(+e.target.value || CUSTOM_SIZE_MIN, CUSTOM_SIZE_MIN, CUSTOM_SIZE_MAX))}
+            style={{ width: 80 }}
+          />
+          {!isCustom && (
+            <span style={{ color: "var(--text-dim)", fontSize: 11 }}>
+              (для шаблона зафиксировано — выберите «Произвольная»)
+            </span>
+          )}
+        </div>
+        <div className="form-row">
           <label>Противников:</label>
           <input
             type="number"
@@ -116,8 +154,8 @@ export function NewGameScreen() {
           onClick={() => {
             startGame({
               templateId,
-              mapWidth: tmpl.defaultWidth,
-              mapHeight: tmpl.defaultHeight,
+              mapWidth: finalW,
+              mapHeight: finalH,
               opponentCount: opponents,
               playerFaction: faction,
               playerName,
