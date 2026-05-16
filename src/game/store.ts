@@ -976,9 +976,17 @@ export const useGame = create<GameState & Actions>()(
     }),
     {
       name: "heroes-web-save",
-      // Игра в активной разработке — поднимаем version при любом изменении формата.
-      // Несовместимые сейвы сбрасываются на initialState (главное меню) без миграции.
+      // v6 — baseline после релиза. С этой точки любое изменение формата
+      // ОБЯЗАНО сопровождаться миграцией в migrate() ниже, а не просто бампом version.
       version: 6,
+      migrate: (persisted, fromVersion) => {
+        const state = persisted as Partial<GameState>;
+        // Сейвы версий < 6 — времён до релиза, формат менялся свободно. Их не мигрируем,
+        // вернём пустое состояние, чтобы persist подставил initialState.
+        if (fromVersion < 6) return undefined;
+        // Сюда добавляются ветки `if (fromVersion < N) { ... }` для каждой будущей версии.
+        return state as GameState;
+      },
     },
   ),
 );
