@@ -728,33 +728,61 @@ export const useGame = create<GameState & Actions>()(
         }
         // Применим потери к атакующему герою.
         const newAttackerArmy = computeArmyAfterBattle(b, "attacker", attacker.army);
-        // Удалим монстра/побеждённого защитника с карты, если был.
         const map = s.map!;
         const newObjects = { ...map.objects };
         const newTiles = map.tiles.slice();
+        let log = [...s.log, logLine(s.day, `${attacker.name} побеждает в бою!`)];
+        let newPlayers = { ...s.players };
+        let newTowns = { ...s.towns };
+
+        // Обработать defender-объект: монстр — удалить, город — сменить владельца.
         if (b.defenderObjectId) {
           const obj = newObjects[b.defenderObjectId];
           if (obj) {
-            const tileIdx = obj.pos.y * map.width + obj.pos.x;
-            newTiles[tileIdx] = { ...newTiles[tileIdx], objectId: null };
-            delete newObjects[b.defenderObjectId];
-            // Передвинем героя на эту клетку.
-            attacker.pos = { ...obj.pos };
+            if (obj.kind === "monster") {
+              const tileIdx = obj.pos.y * map.width + obj.pos.x;
+              newTiles[tileIdx] = { ...newTiles[tileIdx], objectId: null };
+              delete newObjects[b.defenderObjectId];
+              attacker.pos = { ...obj.pos };
+            } else if (obj.kind === "dwelling") {
+              const town = newTowns[obj.id];
+              if (town) {
+                // Сменить владельца. Если у города был предыдущий владелец — снять townId.
+                if (town.ownerId) {
+                  const oldOwner = newPlayers[town.ownerId];
+                  newPlayers[town.ownerId] = {
+                    ...oldOwner,
+                    townIds: oldOwner.townIds.filter(t => t !== town.id),
+                  };
+                }
+                const newOwner = newPlayers[attacker.ownerId];
+                newPlayers[attacker.ownerId] = { ...newOwner, townIds: [...newOwner.townIds, town.id] };
+                newTowns[town.id] = { ...town, ownerId: attacker.ownerId, garrison: [] };
+                newObjects[town.id] = { ...obj, ownerId: attacker.ownerId };
+                log.push(logLine(s.day, `Город "${town.name}" захвачен!`));
+                // Если у предыдущего владельца не осталось ни городов, ни героев — поражение.
+                if (town.ownerId) {
+                  const old = newPlayers[town.ownerId];
+                  if (old.heroIds.length === 0 && old.townIds.length === 0 && !old.defeated) {
+                    newPlayers[town.ownerId] = { ...old, defeated: true };
+                    log.push(logLine(s.day, `${old.name} побеждён.`));
+                  }
+                }
+              }
+            }
           }
         }
-        let log = [...s.log, logLine(s.day, `${attacker.name} побеждает в бою!`)];
+
         const newHeroes = { ...s.heroes, [attacker.id]: { ...attacker, army: newAttackerArmy, pos: attacker.pos } };
 
         // Если бой был с героем противника — обработаем защищающегося.
-        let newPlayers = s.players;
-        const newTowns = s.towns;
         if (b.defenderHeroId) {
           const defender = s.heroes[b.defenderHeroId];
           if (defender) {
             delete newHeroes[defender.id];
-            const owner = s.players[defender.ownerId];
+            const owner = newPlayers[defender.ownerId];
             const newOwner: Player = { ...owner, heroIds: owner.heroIds.filter(h => h !== defender.id) };
-            newPlayers = { ...newPlayers, [owner.id]: newOwner };
+            newPlayers[owner.id] = newOwner;
             log.push(logLine(s.day, `${defender.name} разгромлен.`));
             if (newOwner.heroIds.length === 0 && newOwner.townIds.length === 0) {
               newPlayers[owner.id] = { ...newOwner, defeated: true };
@@ -772,6 +800,11 @@ export const useGame = create<GameState & Actions>()(
           players: newPlayers,
           towns: newTowns,
         });
+        // Если остался только один не-побеждённый игрок — конец игры.
+        const alive = Object.values(get().players).filter(p => !p.defeated);
+        if (alive.length === 1) {
+          set({ phase: "gameOver", winnerId: alive[0].id });
+        }
       },
 
       endBattleDefeat: () => {
