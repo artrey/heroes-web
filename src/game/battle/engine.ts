@@ -207,9 +207,19 @@ function rollDamage(
   ranged: boolean,
 ): { dmg: number; killed: number; remainingHp: number; newCount: number } {
   const aDef = UNITS[attacker.unitId];
-  // База: среднее урона * count.
-  const baseDmgPerUnit = (aDef.minDmg + aDef.maxDmg) / 2;
-  const totalDmg = applyDmgModifiers(b, attacker, defender, ranged, baseDmgPerUnit * attacker.count);
+  // Бросок урона на каждый юнит в стеке — как в HoMM3.
+  // При minDmg === maxDmg рандом пропускаем (оптимизация для больших стеков).
+  const spread = aDef.maxDmg - aDef.minDmg;
+  let raw: number;
+  if (spread === 0) {
+    raw = aDef.minDmg * attacker.count;
+  } else {
+    raw = 0;
+    for (let i = 0; i < attacker.count; i++) {
+      raw += aDef.minDmg + Math.floor(Math.random() * (spread + 1));
+    }
+  }
+  const totalDmg = applyDmgModifiers(b, attacker, defender, ranged, raw);
   return applyDamageToStack(b, defender, totalDmg);
 }
 
