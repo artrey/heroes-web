@@ -35,6 +35,7 @@ export function BattleScreen() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const [hoverCell, setHoverCell] = useState<Coord | null>(null);
+  const [hoverClient, setHoverClient] = useState<{ x: number; y: number } | null>(null);
 
   // Когда бой заканчивается — закрываем экран через действие store.
   useEffect(() => {
@@ -139,8 +140,13 @@ export function BattleScreen() {
     const rect = canvasRef.current!.getBoundingClientRect();
     const x = Math.floor((ev.clientX - rect.left - 20) / HEX_W);
     const y = Math.floor((ev.clientY - rect.top - 20) / HEX_H);
-    if (x < 0 || x >= BATTLE_W || y < 0 || y >= BATTLE_H) setHoverCell(null);
-    else setHoverCell({ x, y });
+    if (x < 0 || x >= BATTLE_W || y < 0 || y >= BATTLE_H) {
+      setHoverCell(null);
+      setHoverClient(null);
+    } else {
+      setHoverCell({ x, y });
+      setHoverClient({ x: ev.clientX, y: ev.clientY });
+    }
   }
 
   const hoverStack = hoverCell
@@ -157,10 +163,13 @@ export function BattleScreen() {
           className="battle-canvas"
           onClick={handleClick}
           onMouseMove={handleMove}
-          onMouseLeave={() => setHoverCell(null)}
+          onMouseLeave={() => {
+            setHoverCell(null);
+            setHoverClient(null);
+          }}
         />
-        {hoverStack && hoverCell && (
-          <BattleTooltip battle={battle} hoverCell={hoverCell} stack={hoverStack} activeStackId={act?.id ?? null} />
+        {hoverStack && hoverClient && (
+          <BattleTooltip battle={battle} client={hoverClient} stack={hoverStack} activeStackId={act?.id ?? null} />
         )}
       </div>
       <div className="battle-controls">
@@ -289,12 +298,12 @@ function drawBattle(
 
 function BattleTooltip({
   battle,
-  hoverCell,
+  client,
   stack,
   activeStackId,
 }: {
   battle: BattleState;
-  hoverCell: Coord;
+  client: { x: number; y: number };
   stack: BattleStack;
   activeStackId: string | null;
 }) {
@@ -309,9 +318,13 @@ function BattleTooltip({
       preview = previewDamage(battle, active.id, stack.id);
     }
   }
-  // Позиционирование: справа-снизу от центра клетки.
-  const left = 20 + hoverCell.x * HEX_W + HEX_W + 6;
-  const top = 20 + hoverCell.y * HEX_H + HEX_H / 2;
+  // Позиционирование: рядом с курсором, в viewport-координатах.
+  const TT_W = 260;
+  const TT_H = 140;
+  const offsetX = 14;
+  const wantLeft = client.x + offsetX;
+  const left = wantLeft + TT_W > window.innerWidth ? Math.max(8, client.x - TT_W - offsetX) : wantLeft;
+  const top = Math.max(8, Math.min(window.innerHeight - TT_H - 8, client.y - TT_H / 2));
   return (
     <div className="battle-tooltip" style={{ left, top }}>
       <div className="tt-title">

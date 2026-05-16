@@ -287,14 +287,21 @@ export function doAttack(b: BattleState, attackerId: string, defenderId: string,
   const res = rollDamage(newB, a, d, false);
   d.count = res.newCount;
   d.hp = res.remainingHp;
-  newB.log.push(battleLine(newB.round, `${aDef.name} (${a.count}) бьёт ${UNITS[d.unitId].name}: -${res.killed}`));
+  newB.log.push(
+    battleLine(
+      newB.round,
+      `${aDef.name} (${a.count}) бьёт ${UNITS[d.unitId].name}: ${res.dmg} урона, убито ${res.killed}`,
+    ),
+  );
   // Контратака.
   if (d.count > 0 && !d.hasRetaliated && !UNITS[d.unitId].ranged) {
     const ret = rollDamage(newB, d, a, false);
     a.count = ret.newCount;
     a.hp = ret.remainingHp;
     d.hasRetaliated = true;
-    newB.log.push(battleLine(newB.round, `${UNITS[d.unitId].name} (${d.count}) отвечает: -${ret.killed}`));
+    newB.log.push(
+      battleLine(newB.round, `${UNITS[d.unitId].name} (${d.count}) отвечает: ${ret.dmg} урона, убито ${ret.killed}`),
+    );
   }
   return finalizeTurn(newB, a.id);
 }
@@ -309,7 +316,12 @@ export function doShoot(b: BattleState, attackerId: string, defenderId: string):
   const res = rollDamage(newB, a, d, true);
   d.count = res.newCount;
   d.hp = res.remainingHp;
-  newB.log.push(battleLine(newB.round, `${UNITS[a.unitId].name} стреляет в ${UNITS[d.unitId].name}: -${res.killed}`));
+  newB.log.push(
+    battleLine(
+      newB.round,
+      `${UNITS[a.unitId].name} стреляет в ${UNITS[d.unitId].name}: ${res.dmg} урона, убито ${res.killed}`,
+    ),
+  );
   return finalizeTurn(newB, a.id);
 }
 
