@@ -13,12 +13,14 @@ import {
   doShoot,
   doWait,
   isBattleOver,
+  previewDamage,
   reachable,
+  stackTotalHp,
   stepBattleAI,
 } from "../game/battle/engine";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
-import type { Coord } from "../game/types";
+import type { BattleStack, BattleState, Coord } from "../game/types";
 
 const HEX_W = 56;
 const HEX_H = 48;
@@ -141,6 +143,10 @@ export function BattleScreen() {
     else setHoverCell({ x, y });
   }
 
+  const hoverStack = hoverCell
+    ? battle.stacks.find(s => s.count > 0 && s.pos.x === hoverCell.x && s.pos.y === hoverCell.y)
+    : null;
+
   return (
     <div className="battle-screen">
       <div className="battle-field">
@@ -153,6 +159,9 @@ export function BattleScreen() {
           onMouseMove={handleMove}
           onMouseLeave={() => setHoverCell(null)}
         />
+        {hoverStack && hoverCell && (
+          <BattleTooltip battle={battle} hoverCell={hoverCell} stack={hoverStack} activeStackId={act?.id ?? null} />
+        )}
       </div>
       <div className="battle-controls">
         {winner ? (
@@ -276,4 +285,54 @@ function drawBattle(
     ctx.fillStyle = "#fff";
     ctx.fillText(txt, cx, cy + 18);
   }
+}
+
+function BattleTooltip({
+  battle,
+  hoverCell,
+  stack,
+  activeStackId,
+}: {
+  battle: BattleState;
+  hoverCell: Coord;
+  stack: BattleStack;
+  activeStackId: string | null;
+}) {
+  const def = UNITS[stack.unitId];
+  const { current, max } = stackTotalHp(battle, stack);
+  const hpPct = Math.max(0, Math.min(100, Math.round((current / max) * 100)));
+  // Если активный — это другой стек враждебной стороны — посчитать превью урона.
+  let preview: ReturnType<typeof previewDamage> = null;
+  if (activeStackId && activeStackId !== stack.id) {
+    const active = battle.stacks.find(s => s.id === activeStackId);
+    if (active && active.side !== stack.side && active.count > 0) {
+      preview = previewDamage(battle, active.id, stack.id);
+    }
+  }
+  // Позиционирование: справа-снизу от центра клетки.
+  const left = 20 + hoverCell.x * HEX_W + HEX_W + 6;
+  const top = 20 + hoverCell.y * HEX_H + HEX_H / 2;
+  return (
+    <div className="battle-tooltip" style={{ left, top }}>
+      <div className="tt-title">
+        {def.icon} {def.name} × {stack.count}
+      </div>
+      <div className="tt-sub">
+        HP стека: {current} / {max} ({hpPct}%)
+      </div>
+      <div className="tt-sub">
+        Атк {def.attack} · Защ {def.defense} · HP {def.hp} · Ск {def.speed}
+        {def.ranged ? ` · ⏵ ${stack.shots}` : ""}
+      </div>
+      {preview && (
+        <div className="tt-pred">
+          {preview.ranged ? "⏵ Выстрел: " : "⚔️ Удар: "}
+          {preview.minDmg === preview.maxDmg ? preview.minDmg : `${preview.minDmg}–${preview.maxDmg}`} урона,{" "}
+          {preview.minKilled === preview.maxKilled
+            ? `убьёт ${preview.minKilled}`
+            : `убьёт ${preview.minKilled}–${preview.maxKilled}`}
+        </div>
+      )}
+    </div>
+  );
 }

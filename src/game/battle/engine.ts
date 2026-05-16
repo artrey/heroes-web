@@ -207,26 +207,70 @@ function rollDamage(
   ranged: boolean,
 ): { dmg: number; killed: number; remainingHp: number; newCount: number } {
   const aDef = UNITS[attacker.unitId];
-  const aStats = effectiveStats(attacker, bonusFor(b, attacker.side));
-  const dStats = effectiveStats(defender, bonusFor(b, defender.side));
   // База: среднее урона * count.
   const baseDmgPerUnit = (aDef.minDmg + aDef.maxDmg) / 2;
-  let totalDmg = baseDmgPerUnit * attacker.count;
-  // Модификатор атака/защита.
-  const diff = aStats.attack - dStats.defense;
-  if (diff > 0) totalDmg *= 1 + Math.min(diff, 60) * 0.05;
-  else if (diff < 0) totalDmg *= 1 / (1 + Math.min(-diff, 28) * 0.025);
-  // Range penalty: если дистанция > 5, урон вдвое.
-  if (ranged && chebyshev(attacker.pos, defender.pos) > 5) totalDmg *= 0.5;
-  totalDmg = Math.max(1, Math.floor(totalDmg));
+  const totalDmg = applyDmgModifiers(b, attacker, defender, ranged, baseDmgPerUnit * attacker.count);
+  return applyDamageToStack(b, defender, totalDmg);
+}
 
-  // Применить к defender: учесть оставшиеся hp верхнего юнита (с учётом бонуса).
+function applyDmgModifiers(
+  b: BattleState,
+  attacker: BattleStack,
+  defender: BattleStack,
+  ranged: boolean,
+  rawDmg: number,
+): number {
+  const aStats = effectiveStats(attacker, bonusFor(b, attacker.side));
+  const dStats = effectiveStats(defender, bonusFor(b, defender.side));
+  let dmg = rawDmg;
+  const diff = aStats.attack - dStats.defense;
+  if (diff > 0) dmg *= 1 + Math.min(diff, 60) * 0.05;
+  else if (diff < 0) dmg *= 1 / (1 + Math.min(-diff, 28) * 0.025);
+  if (ranged && chebyshev(attacker.pos, defender.pos) > 5) dmg *= 0.5;
+  return Math.max(1, Math.floor(dmg));
+}
+
+function applyDamageToStack(
+  b: BattleState,
+  defender: BattleStack,
+  dmg: number,
+): { dmg: number; killed: number; remainingHp: number; newCount: number } {
+  const dStats = effectiveStats(defender, bonusFor(b, defender.side));
   const totalDefenderHp = (defender.count - 1) * dStats.hp + defender.hp;
-  const newHpTotal = Math.max(0, totalDefenderHp - totalDmg);
+  const newHpTotal = Math.max(0, totalDefenderHp - dmg);
   const newCount = Math.ceil(newHpTotal / dStats.hp);
   const remainingHp = newCount === 0 ? 0 : newHpTotal - (newCount - 1) * dStats.hp;
   const killed = defender.count - newCount;
-  return { dmg: totalDmg, killed, remainingHp, newCount };
+  return { dmg, killed, remainingHp, newCount };
+}
+
+// Превью урона, который НАНЁС бы attacker по defender — для тултипов и принятия решений.
+// Считает диапазон minDmg…maxDmg и оценочные потери (минимум/максимум убитых).
+export function previewDamage(
+  b: BattleState,
+  attackerId: string,
+  defenderId: string,
+): { ranged: boolean; minDmg: number; maxDmg: number; minKilled: number; maxKilled: number } | null {
+  const attacker = b.stacks.find(s => s.id === attackerId);
+  const defender = b.stacks.find(s => s.id === defenderId);
+  if (!attacker || !defender || attacker.count <= 0 || defender.count <= 0) return null;
+  const aDef = UNITS[attacker.unitId];
+  const ranged = canShoot(b, attacker);
+  const minRaw = aDef.minDmg * attacker.count;
+  const maxRaw = aDef.maxDmg * attacker.count;
+  const minDmg = applyDmgModifiers(b, attacker, defender, ranged, minRaw);
+  const maxDmg = applyDmgModifiers(b, attacker, defender, ranged, maxRaw);
+  const lo = applyDamageToStack(b, defender, minDmg); // меньше урона — больше выживших
+  const hi = applyDamageToStack(b, defender, maxDmg);
+  return { ranged, minDmg, maxDmg, minKilled: lo.killed, maxKilled: hi.killed };
+}
+
+// Сколько HP в стеке всего (с учётом текущих HP верхнего юнита и бонусов).
+export function stackTotalHp(b: BattleState, stack: BattleStack): { current: number; max: number } {
+  const stats = effectiveStats(stack, bonusFor(b, stack.side));
+  const max = stats.hp * stack.count;
+  const current = (stack.count - 1) * stats.hp + stack.hp;
+  return { current, max };
 }
 
 export function doAttack(b: BattleState, attackerId: string, defenderId: string, approachTo?: Coord): BattleState {
