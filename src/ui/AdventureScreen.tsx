@@ -9,6 +9,7 @@ import { dailyIncomeFor } from "../game/utils/income";
 import { findPath, isPassable, pathCost, STEP_STRAIGHT, stepCost } from "../game/utils/pathfind";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { computeVisibleTiles } from "../game/utils/visibility";
+import { computeDanger } from "../game/utils/zoc";
 import { getTerrainBaseColor, getTerrainTile } from "./terrainPatterns";
 
 const TILE_SIZE = 32;
@@ -65,6 +66,10 @@ export function AdventureScreen() {
     () => computeVisibleTiles(useGame.getState(), humanId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [heroes, towns, players, humanId],
+  );
+  const danger = useMemo(
+    () => (map ? computeDanger(map, heroes, activePlayerId) : { cells: new Set<string>(), sources: new Set<string>() }),
+    [map, heroes, activePlayerId],
   );
 
   // Центрируем камеру на выбранном герое при первом монтировании / смене героя.
@@ -165,7 +170,11 @@ export function AdventureScreen() {
       setHoverPath(null);
       return;
     }
-    const path = findPath(map!, hero.pos, t, { revealed });
+    const path = findPath(map!, hero.pos, t, {
+      revealed,
+      dangerCells: danger.cells,
+      dangerSources: danger.sources,
+    });
     setHoverPath(path);
   }
 

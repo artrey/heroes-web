@@ -59,16 +59,23 @@ export interface PathOptions {
   // Если задан — путь проходит только по тайлам, для которых revealed[key] === true.
   // Цель тоже должна быть видна; иначе путь не строится.
   revealed?: Record<string, true>;
-  // Клетки «зоны контроля» (соседи монстров/враждебных героев). Их можно использовать
-  // только как цель пути, но не как промежуточный шаг.
+  // Клетки «зоны контроля» (соседи монстров/враждебных героев). Запрещены и как
+  // промежуточный шаг, и как цель, КРОМЕ случая, когда сама цель пути — это
+  // позиция опасного объекта (см. dangerSources), т.е. мы идём в бой.
   dangerCells?: Set<string>;
+  // Позиции самих опасных объектов (монстры/вражеские герои). Если goal попадает
+  // в этот набор, danger cells игнорируются — герой должен иметь возможность подойти.
+  dangerSources?: Set<string>;
 }
 
 export function findPath(map: GameMap, start: Coord, goal: Coord, options: PathOptions = {}): Coord[] | null {
   if (start.x === goal.x && start.y === goal.y) return [];
-  const { revealed, dangerCells } = options;
+  const { revealed, dangerCells, dangerSources } = options;
   const goalKey = `${goal.x},${goal.y}`;
   if (revealed && revealed[goalKey] !== true) return null;
+  const attackingSource = !!dangerSources?.has(goalKey);
+  const effectiveDanger = attackingSource ? undefined : dangerCells;
+  if (effectiveDanger && effectiveDanger.has(goalKey)) return null;
   const startNode: Node = {
     x: start.x,
     y: start.y,
@@ -109,8 +116,8 @@ export function findPath(map: GameMap, start: Coord, goal: Coord, options: PathO
       if (closed.has(nk)) continue;
       if (!isPassable(map, nx, ny, true, goal)) continue;
       if (revealed && revealed[nk] !== true) continue;
-      // Danger-cell можно использовать только как конечную точку.
-      if (dangerCells && dangerCells.has(nk) && nk !== goalKey) continue;
+      // Danger cells полностью запрещены, кроме случая, когда мы идём атаковать сам источник.
+      if (effectiveDanger && effectiveDanger.has(nk)) continue;
       const g = cur.g + stepCost(dx, dy);
       const existing = openMap.get(nk);
       if (existing && existing.g <= g) continue;

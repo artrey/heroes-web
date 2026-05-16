@@ -32,6 +32,7 @@ import { chebyshev, findPath, isPassable, pathCost, STEP_STRAIGHT, stepCost } fr
 import { add, canAfford, emptyBag, pay, RESOURCE_NAMES } from "./utils/resources";
 import { mulberry32, randChoice, randInt } from "./utils/rng";
 import { fullyRevealed, revealForPlayer } from "./utils/visibility";
+import { computeDanger } from "./utils/zoc";
 
 const PLAYER_COLORS = ["#d04040", "#4080d0", "#40b040", "#d0a040", "#a040b0", "#40b0b0", "#d04080", "#808080"];
 
@@ -296,7 +297,12 @@ export const useGame = create<GameState & Actions>()(
         if (!activePlayer || !activePlayer.isHuman) return "blocked";
         if (hero.ownerId !== s.activePlayerId) return "blocked";
 
-        const path = findPath(s.map, hero.pos, target, { revealed: activePlayer.revealed });
+        const danger = computeDanger(s.map, s.heroes, hero.ownerId);
+        const path = findPath(s.map, hero.pos, target, {
+          revealed: activePlayer.revealed,
+          dangerCells: danger.cells,
+          dangerSources: danger.sources,
+        });
         if (!path || path.length === 0) return "noPath";
 
         // Идём по пути, пока хватает MP. На каждом шаге проверяем, не наступили ли на объект.
