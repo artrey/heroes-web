@@ -255,6 +255,18 @@ function drawBattle(
       ctx.fillRect(20 + x * HEX_W, 20 + y * HEX_H, HEX_W, HEX_H);
     }
   }
+  // Подсветка зоны hover-стека (если он не активный) — обводкой, чтобы не мешать.
+  const hoverStack = hover ? battle.stacks.find(s => s.count > 0 && s.pos.x === hover.x && s.pos.y === hover.y) : null;
+  if (hoverStack && hoverStack.id !== act?.id) {
+    const reach = reachable(battle, hoverStack);
+    ctx.strokeStyle = hoverStack.side === "attacker" ? "rgba(120,200,110,0.7)" : "rgba(220,110,90,0.7)";
+    ctx.lineWidth = 1.5;
+    for (const k of reach.keys()) {
+      const [x, y] = k.split(",").map(Number);
+      ctx.strokeRect(20 + x * HEX_W + 2, 20 + y * HEX_H + 2, HEX_W - 4, HEX_H - 4);
+    }
+    ctx.lineWidth = 1;
+  }
 
   // Hover.
   if (hover) {
