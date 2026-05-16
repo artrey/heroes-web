@@ -311,13 +311,20 @@ export function AdventureScreen() {
         <h3 style={{ marginTop: 8 }}>🏰 ГОРОДА ({playerTowns.length})</h3>
         {playerTowns.length === 0 && <div style={{ color: "var(--text-dim)", fontSize: 12 }}>Нет городов</div>}
         {playerTowns.map(t => (
-          <div key={t.id} className="town-card" onClick={() => openTown(t.id)}>
+          <div
+            key={t.id}
+            className={`town-card ${t.builtToday ? "built-today" : "build-ready"}`}
+            onClick={() => openTown(t.id)}
+          >
             <div className="row">
               <span className="icon">{t.faction === "castle" ? "🏰" : "🏯"}</span>
-              <div>
+              <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: "bold" }}>{t.name}</div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Построено: {t.built.length}</div>
               </div>
+              <span className="town-build-flag" title={t.builtToday ? "Сегодня уже строили" : "Можно построить здание"}>
+                {t.builtToday ? "🔒" : "🔨"}
+              </span>
             </div>
           </div>
         ))}
@@ -429,6 +436,7 @@ function drawMap(
       const ownerColor = tw?.ownerId ? (players[tw.ownerId]?.color ?? "#888") : "#888";
       drawBuildingPlaque(ctx, sx, sy, ownerColor);
       drawEmoji(ctx, obj.icon, cx, cy, 24);
+      if (tw?.builtToday) drawBuiltTodayBadge(ctx, sx, sy);
     } else if (obj.kind === "mine") {
       if (obj.ownerId) {
         drawBuildingPlaque(ctx, sx, sy, players[obj.ownerId]?.color ?? "#888");
@@ -549,6 +557,26 @@ function drawBuildingPlaque(ctx: CanvasRenderingContext2D, sx: number, sy: numbe
 }
 
 // Лёгкая овальная тень под объектом без подложки (ресурсы, артефакты, сундуки).
+// Маркер «здание сегодня уже построено» — небольшой кружок в правом верхнем углу
+// тайла города с «✓». Цель — на карте сразу видно, что сегодня тут больше нельзя строить.
+function drawBuiltTodayBadge(ctx: CanvasRenderingContext2D, sx: number, sy: number) {
+  const x = sx + TILE_SIZE - 6;
+  const y = sy + 6;
+  ctx.fillStyle = "rgba(0,0,0,0.85)";
+  ctx.beginPath();
+  ctx.arc(x, y, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#5fa850";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.fillStyle = "#5fa850";
+  ctx.font = "bold 9px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("✓", x, y + 1);
+}
+
 function drawObjectShadow(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
   ctx.save();
   ctx.fillStyle = "rgba(0,0,0,0.4)";

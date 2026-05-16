@@ -64,27 +64,43 @@ export function TownScreen() {
 
       <div className="town-content">
         <div className="town-main">
-          <h1 className="town-title">
-            Постройки{" "}
-            <span
-              style={{
-                fontSize: 14,
-                marginLeft: 12,
-                color: town.builtToday ? "var(--text-dim)" : "var(--good)",
-                fontStyle: "italic",
-                fontWeight: "normal",
-              }}
-            >
-              {town.builtToday ? "✓ Сегодня уже построено — следующее завтра" : "🔨 Можно построить одно здание"}
-            </span>
-          </h1>
+          <h1 className="town-title">Постройки</h1>
+          <div className={`build-status ${town.builtToday ? "done" : "ready"}`}>
+            {town.builtToday ? (
+              <>
+                <span className="build-status-icon">🔒</span>
+                <div>
+                  <div className="build-status-title">Сегодня вы уже построили здание</div>
+                  <div className="build-status-sub">Следующая постройка станет доступна завтра.</div>
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="build-status-icon">🔨</span>
+                <div>
+                  <div className="build-status-title">Доступна постройка на сегодня</div>
+                  <div className="build-status-sub">Выберите одно здание — на день будет израсходован лимит.</div>
+                </div>
+              </>
+            )}
+          </div>
           <div className="buildings-grid">
             {buildings.map(b => {
               const built = town.built.includes(b.id);
               const prereqsOk = !b.prereq || b.prereq.every(p => town.built.includes(p));
               const affordable = canAfford(player.resources, b.cost);
               const canBuild = !built && prereqsOk && affordable && !town.builtToday;
-              const cls = built ? "built" : !prereqsOk ? "locked" : !affordable ? "cant-afford" : "";
+              // Здание полностью доступно по prereq + ресурсам, но недоступно только из-за дневного лимита.
+              const lockedByDay = !built && prereqsOk && affordable && town.builtToday;
+              const cls = built
+                ? "built"
+                : !prereqsOk
+                  ? "locked"
+                  : !affordable
+                    ? "cant-afford"
+                    : lockedByDay
+                      ? "locked-today"
+                      : "";
               const interactive = built && (b.id === "tavern" || b.id === "marketplace");
               return (
                 <div
@@ -95,9 +111,11 @@ export function TownScreen() {
                   title={
                     !prereqsOk
                       ? `Требуется: ${b.prereq?.map(p => getBuilding(town.faction, p)?.name).join(", ")}`
-                      : interactive
-                        ? "Открыть"
-                        : undefined
+                      : lockedByDay
+                        ? "Сегодня уже строили в этом городе"
+                        : interactive
+                          ? "Открыть"
+                          : undefined
                   }
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

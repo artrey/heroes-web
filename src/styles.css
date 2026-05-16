@@ -310,9 +310,20 @@ select {
 .town-card {
   background: var(--bg-2);
   border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
   padding: 10px;
   border-radius: 3px;
   cursor: pointer;
+}
+.town-card.build-ready {
+  border-left-color: var(--good);
+}
+.town-card.built-today {
+  border-left-color: var(--danger);
+}
+.town-build-flag {
+  font-size: 18px;
+  opacity: 0.85;
 }
 .hero-card.selected,
 .town-card.selected {
@@ -406,7 +417,42 @@ select {
 .town-title {
   color: var(--gold);
   font-size: 24px;
-  margin: 0 0 20px;
+  margin: 0 0 12px;
+}
+.build-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+}
+.build-status-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+.build-status-title {
+  font-weight: bold;
+  font-size: 15px;
+}
+.build-status-sub {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.build-status.ready {
+  background: rgba(95, 168, 80, 0.15);
+  border-color: var(--good);
+}
+.build-status.ready .build-status-title {
+  color: var(--good);
+}
+.build-status.done {
+  background: rgba(196, 64, 48, 0.18);
+  border-color: var(--danger);
+}
+.build-status.done .build-status-title {
+  color: var(--danger);
 }
 .buildings-grid {
   display: grid;
@@ -431,6 +477,23 @@ select {
 }
 .building-card.cant-afford {
   opacity: 0.65;
+}
+.building-card.locked-today {
+  opacity: 0.5;
+  cursor: not-allowed;
+  border-style: dashed;
+  position: relative;
+}
+.building-card.locked-today::after {
+  content: "🔒 сегодня";
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 10px;
+  color: var(--danger);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 1px 5px;
+  border-radius: 2px;
 }
 .building-card .icon {
   font-size: 28px;
