@@ -753,8 +753,13 @@ function drawMinimap(
   visible: Set<string>,
 ) {
   const { px, mmW, mmH, ox, oy } = getMinimapBounds(map.width, map.height, cw, ch);
-  ctx.fillStyle = "rgba(0,0,0,0.7)";
-  ctx.fillRect(ox - 4, oy - 4, mmW + 8, mmH + 8);
+  // Контейнер минимапа: подложка + золотая обводка, чтобы не сливалась с тёмным буфером карты.
+  ctx.fillStyle = "rgba(0,0,0,0.78)";
+  ctx.fillRect(ox - 6, oy - 6, mmW + 12, mmH + 12);
+  ctx.strokeStyle = "#d4a64a";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(ox - 6 + 0.5, oy - 6 + 0.5, mmW + 12 - 1, mmH + 12 - 1);
+  ctx.lineWidth = 1;
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
       const key = `${x},${y}`;
