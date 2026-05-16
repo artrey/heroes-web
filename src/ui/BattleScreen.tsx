@@ -222,24 +222,21 @@ function drawBattle(
   if (!battle) return;
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
-  // Фон поля — вертикальный градиент землистого цвета.
+  // Земляной фон с лёгким градиентом сверху вниз.
   const bgGrad = ctx.createLinearGradient(0, 0, 0, ch);
-  bgGrad.addColorStop(0, "#3a2e1a");
-  bgGrad.addColorStop(1, "#1f1810");
+  bgGrad.addColorStop(0, "#403628");
+  bgGrad.addColorStop(1, "#2c241a");
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, cw, ch);
-  // Сетка — с тонкой текстурой через псевдослучайные точки.
+  // Мягкая шахматка через полупрозрачные оверлеи — заметно, но не рябит.
   for (let y = 0; y < BATTLE_H; y++) {
     for (let x = 0; x < BATTLE_W; x++) {
       const px = 20 + x * HEX_W;
       const py = 20 + y * HEX_H;
       const isEven = (x + y) % 2 === 0;
-      const cellGrad = ctx.createLinearGradient(px, py, px, py + HEX_H);
-      cellGrad.addColorStop(0, isEven ? "#5a4a32" : "#4a3a26");
-      cellGrad.addColorStop(1, isEven ? "#3e3020" : "#2e2418");
-      ctx.fillStyle = cellGrad;
+      ctx.fillStyle = isEven ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.06)";
       ctx.fillRect(px, py, HEX_W, HEX_H);
-      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.strokeStyle = "rgba(0,0,0,0.22)";
       ctx.strokeRect(px + 0.5, py + 0.5, HEX_W - 1, HEX_H - 1);
     }
   }
