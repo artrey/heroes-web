@@ -177,7 +177,7 @@ export function TownScreen() {
                       </span>
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                      Доступно: {avail} | Атк {unit.attack} / Защ {unit.defense} / HP {unit.hp}
+                      Доступно: {avail} | Атк {unit.attack} / Защ {unit.defense} / HP {unit.hp} / Ск {unit.speed}
                     </div>
                     <div style={{ fontSize: 11 }}>
                       {Object.entries(unit.cost).map(([k, v]) => (
