@@ -157,7 +157,39 @@ export function AdventureScreen() {
     return { x, y };
   }
 
+  // Перевод курсора в координаты карты для минимапа, или null если вне зоны.
+  function minimapTileAt(ev: React.MouseEvent): Coord | null {
+    const c = canvasRef.current;
+    if (!c || !map) return null;
+    const rect = c.getBoundingClientRect();
+    const cx = ev.clientX - rect.left;
+    const cy = ev.clientY - rect.top;
+    const mm = getMinimapBounds(map.width, map.height, c.width, c.height);
+    if (cx < mm.ox || cx >= mm.ox + mm.mmW) return null;
+    if (cy < mm.oy || cy >= mm.oy + mm.mmH) return null;
+    return { x: (cx - mm.ox) / mm.px, y: (cy - mm.oy) / mm.px };
+  }
+
+  function centerCameraOnTile(tx: number, ty: number) {
+    const c = canvasRef.current;
+    if (!c || !map) return;
+    const maxX = Math.max(0, map.width * TILE_SIZE - c.width);
+    const maxY = Math.max(0, map.height * TILE_SIZE - c.height);
+    setCamera({
+      x: Math.max(0, Math.min(maxX, tx * TILE_SIZE - c.width / 2)),
+      y: Math.max(0, Math.min(maxY, ty * TILE_SIZE - c.height / 2)),
+    });
+  }
+
   function handleMouseMove(ev: React.MouseEvent) {
+    // Drag по минимапу с зажатой левой кнопкой.
+    if (ev.buttons === 1) {
+      const mm = minimapTileAt(ev);
+      if (mm) {
+        centerCameraOnTile(mm.x, mm.y);
+        return;
+      }
+    }
     const t = clickToTile(ev);
     if (!t) return;
     setHoverTile(t);
@@ -179,6 +211,12 @@ export function AdventureScreen() {
   }
 
   function handleClick(ev: React.MouseEvent) {
+    // Клик в зоне миникарты — просто центрирование, не трогаем выбор героя/город.
+    const mm = minimapTileAt(ev);
+    if (mm) {
+      centerCameraOnTile(mm.x, mm.y);
+      return;
+    }
     const t = clickToTile(ev);
     if (!t) return;
     const tile = map!.tiles[t.y * map!.width + t.x];
@@ -627,6 +665,17 @@ function drawEmoji(ctx: CanvasRenderingContext2D, txt: string, cx: number, cy: n
   ctx.fillText(txt, cx, cy);
 }
 
+// Размеры/позиция минимапа — используются и при отрисовке, и при ловле кликов.
+function getMinimapBounds(mapWidth: number, mapHeight: number, cw: number, ch: number) {
+  const mmSize = 160;
+  const px = Math.max(1, Math.floor(mmSize / Math.max(mapWidth, mapHeight)));
+  const mmW = px * mapWidth;
+  const mmH = px * mapHeight;
+  const ox = cw - mmW - 12;
+  const oy = ch - mmH - 12;
+  return { px, mmW, mmH, ox, oy };
+}
+
 function drawMinimap(
   ctx: CanvasRenderingContext2D,
   map: NonNullable<ReturnType<typeof useGame.getState>["map"]>,
@@ -639,12 +688,7 @@ function drawMinimap(
   revealed: Record<string, true>,
   visible: Set<string>,
 ) {
-  const mmSize = 160;
-  const px = Math.max(1, Math.floor(mmSize / Math.max(map.width, map.height)));
-  const mmW = px * map.width;
-  const mmH = px * map.height;
-  const ox = cw - mmW - 12;
-  const oy = ch - mmH - 12;
+  const { px, mmW, mmH, ox, oy } = getMinimapBounds(map.width, map.height, cw, ch);
   ctx.fillStyle = "rgba(0,0,0,0.7)";
   ctx.fillRect(ox - 4, oy - 4, mmW + 8, mmH + 8);
   for (let y = 0; y < map.height; y++) {
