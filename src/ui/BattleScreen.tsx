@@ -31,6 +31,7 @@ export function BattleScreen() {
   const players = useGame(s => s.players);
   const activePlayerId = useGame(s => s.activePlayerId);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
   const [hoverCell, setHoverCell] = useState<Coord | null>(null);
 
   // Когда бой заканчивается — закрываем экран через действие store.
@@ -83,6 +84,11 @@ export function BattleScreen() {
     const ctx = canvasRef.current.getContext("2d")!;
     drawBattle(ctx, battle, hoverCell);
   }, [battle, hoverCell]);
+
+  // Автоскролл лога боя при появлении новых записей.
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [battle?.log]);
 
   if (!battle) return null;
   const act = activeStack(battle);
@@ -180,8 +186,8 @@ export function BattleScreen() {
             </div>
           </>
         ) : null}
-        <div className="battle-log">
-          {battle.log.slice(-8).map((l, i) => (
+        <div className="battle-log" ref={logRef}>
+          {battle.log.map((l, i) => (
             <div key={i}>{l}</div>
           ))}
         </div>

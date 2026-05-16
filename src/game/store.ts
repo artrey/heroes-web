@@ -30,6 +30,20 @@ import { mulberry32, randChoice, randInt } from "./utils/rng";
 
 const PLAYER_COLORS = ["#d04040", "#4080d0", "#40b040", "#d0a040", "#a040b0", "#40b0b0", "#d04080", "#808080"];
 
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+function clockTag(): string {
+  const d = new Date();
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+// Префикс игрового дня + локальное время для записей лога приключений.
+function logLine(day: number, text: string): string {
+  return `[${clockTag()}] [Д${day}] ${text}`;
+}
+
 const HERO_HIRE_COST: Partial<ResourceBag> = { gold: 2500 };
 
 function findHeroSpawnPos(s: GameState, townPos: Coord): Coord | null {
@@ -243,7 +257,7 @@ export const useGame = create<GameState & Actions>()(
           selectedHeroId: heroes[Object.keys(heroes)[0]].id,
           selectedTownId: null,
           options: opts,
-          log: ["Игра началась. День 1."],
+          log: [logLine(1, "Игра началась.")],
           battle: null,
           pendingObjectVisit: null,
           winnerId: null,
@@ -368,7 +382,7 @@ export const useGame = create<GameState & Actions>()(
             const newTowns = applyWeeklyGrowth(s.towns);
             set({ towns: newTowns });
           }
-          log.push(`День ${day}.`);
+          log.push(logLine(day, "— начало дня —"));
         }
 
         // Восстановим MP всем героям следующего активного игрока и далее — но проще всем.
@@ -439,7 +453,7 @@ export const useGame = create<GameState & Actions>()(
         set({
           towns: { ...s.towns, [townId]: newTown },
           players: { ...s.players, [player.id]: newPlayer },
-          log: [...s.log, `Построено: ${def.name}`],
+          log: [...s.log, logLine(s.day, `Построено: ${def.name}`)],
         });
         return true;
       },
@@ -515,7 +529,7 @@ export const useGame = create<GameState & Actions>()(
               heroIds: [...player.heroIds, hid],
             },
           },
-          log: [...s.log, `Нанят герой: ${hero.name}`],
+          log: [...s.log, logLine(s.day, `Нанят герой: ${hero.name}`)],
           selectedHeroId: hid,
         });
         return true;
@@ -728,7 +742,7 @@ export const useGame = create<GameState & Actions>()(
             attacker.pos = { ...obj.pos };
           }
         }
-        let log = [...s.log, `${attacker.name} побеждает в бою!`];
+        let log = [...s.log, logLine(s.day, `${attacker.name} побеждает в бою!`)];
         const newHeroes = { ...s.heroes, [attacker.id]: { ...attacker, army: newAttackerArmy, pos: attacker.pos } };
 
         // Если бой был с героем противника — обработаем защищающегося.
@@ -741,10 +755,10 @@ export const useGame = create<GameState & Actions>()(
             const owner = s.players[defender.ownerId];
             const newOwner: Player = { ...owner, heroIds: owner.heroIds.filter(h => h !== defender.id) };
             newPlayers = { ...newPlayers, [owner.id]: newOwner };
-            log.push(`${defender.name} разгромлен.`);
+            log.push(logLine(s.day, `${defender.name} разгромлен.`));
             if (newOwner.heroIds.length === 0 && newOwner.townIds.length === 0) {
               newPlayers[owner.id] = { ...newOwner, defeated: true };
-              log.push(`${owner.name} побеждён.`);
+              log.push(logLine(s.day, `${owner.name} побеждён.`));
             }
           }
         }
@@ -774,10 +788,10 @@ export const useGame = create<GameState & Actions>()(
         delete restHeroes[attacker.id];
         const newOwner: Player = { ...owner, heroIds: owner.heroIds.filter(h => h !== attacker.id) };
         let players = { ...s.players, [owner.id]: newOwner };
-        const log = [...s.log, `${attacker.name} погиб в бою.`];
+        const log = [...s.log, logLine(s.day, `${attacker.name} погиб в бою.`)];
         if (newOwner.heroIds.length === 0 && newOwner.townIds.length === 0) {
           players[owner.id] = { ...newOwner, defeated: true };
-          log.push(`${owner.name} побеждён.`);
+          log.push(logLine(s.day, `${owner.name} побеждён.`));
         }
         set({
           battle: null,
@@ -924,7 +938,7 @@ function interactWithObject(objId: string, heroId?: string) {
     useGame.setState({
       players: { ...s.players, [player.id]: { ...player, resources: newResources } },
       map: { ...s.map, objects: newObjects, tiles: newTiles },
-      log: [...s.log, `Подобрано: ${obj.amount} ${RESOURCE_NAMES[obj.resource]}`],
+      log: [...s.log, logLine(s.day, `Подобрано: ${obj.amount} ${RESOURCE_NAMES[obj.resource]}`)],
     });
     return;
   }
@@ -944,7 +958,7 @@ function interactWithObject(objId: string, heroId?: string) {
     useGame.setState({
       players: { ...s.players, [player.id]: { ...player, resources: newResources } },
       map: { ...s.map, objects: newObjects, tiles: newTiles },
-      log: [...s.log, `Сундук: +${gold} золота`],
+      log: [...s.log, logLine(s.day, `Сундук: +${gold} золота`)],
     });
     return;
   }
@@ -955,7 +969,7 @@ function interactWithObject(objId: string, heroId?: string) {
     const newObjects = { ...s.map.objects, [obj.id]: { ...obj, ownerId: hero.ownerId } };
     useGame.setState({
       map: { ...s.map, objects: newObjects },
-      log: [...s.log, `Шахта (${RESOURCE_NAMES[obj.mineResource]}) захвачена`],
+      log: [...s.log, logLine(s.day, `Шахта (${RESOURCE_NAMES[obj.mineResource]}) захвачена`)],
     });
     return;
   }
@@ -979,7 +993,7 @@ function interactWithObject(objId: string, heroId?: string) {
     useGame.setState({
       heroes: { ...s.heroes, [hero.id]: newHero },
       map: { ...s.map, objects: newObjects, tiles: newTiles },
-      log: [...s.log, `Подобран артефакт: ${artDef.name}${slotFree ? " (надет)" : " (в рюкзак)"}`],
+      log: [...s.log, logLine(s.day, `Подобран артефакт: ${artDef.name}${slotFree ? " (надет)" : " (в рюкзак)"}`)],
     });
     return;
   }
@@ -1043,7 +1057,7 @@ function captureTown(townId: string, newOwnerId: string) {
     players,
     towns: { ...s.towns, [townId]: newTown },
     map: { ...map, objects: newObjects },
-    log: [...s.log, `Город "${town.name}" захвачен!`],
+    log: [...s.log, logLine(s.day, `Город "${town.name}" захвачен!`)],
   });
   // Проверка победы — если у предыдущего владельца не осталось ни городов, ни героев.
   if (town.ownerId) {
@@ -1051,7 +1065,7 @@ function captureTown(townId: string, newOwnerId: string) {
     if (old.heroIds.length === 0 && old.townIds.length === 0 && !old.defeated) {
       useGame.setState({
         players: { ...useGame.getState().players, [town.ownerId]: { ...old, defeated: true } },
-        log: [...useGame.getState().log, `${old.name} побеждён.`],
+        log: [...useGame.getState().log, logLine(useGame.getState().day, `${old.name} побеждён.`)],
       });
     }
   }

@@ -24,6 +24,7 @@ const TERRAIN_COLOR: Record<string, string> = {
 export function AdventureScreen() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
 
   const map = useGame(s => s.map);
   const heroes = useGame(s => s.heroes);
@@ -68,6 +69,11 @@ export function AdventureScreen() {
     if (!ctx) return;
     drawMap(ctx, map.tiles, map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId);
   }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId]);
+
+  // Автоскролл лога вниз при появлении новых записей.
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [log]);
 
   // Размер canvas.
   useEffect(() => {
@@ -237,8 +243,8 @@ export function AdventureScreen() {
           </div>
         ))}
 
-        <div className="log-panel">
-          {log.slice(-12).map((l, i) => (
+        <div className="log-panel" ref={logRef}>
+          {log.map((l, i) => (
             <div key={i} className="entry">
               {l}
             </div>

@@ -68,8 +68,22 @@ export function startBattle(args: StartArgs): BattleState {
     activeStackIdx: 0,
     round: 1,
     winner: null,
-    log: ["Бой начался!"],
+    log: [battleLine(1, "Бой начался!")],
   };
+}
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+function clockTag(): string {
+  const d = new Date();
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
+
+// Префикс раунда + локальное время для записей лога боя.
+function battleLine(round: number, text: string): string {
+  return `[${clockTag()}] [Р${round}] ${text}`;
 }
 
 function bonusFor(b: BattleState, side: "attacker" | "defender"): HeroBonus {
@@ -226,14 +240,14 @@ export function doAttack(b: BattleState, attackerId: string, defenderId: string,
   const res = rollDamage(newB, a, d, false);
   d.count = res.newCount;
   d.hp = res.remainingHp;
-  newB.log.push(`${aDef.name} (${a.count}) бьёт ${UNITS[d.unitId].name}: -${res.killed}`);
+  newB.log.push(battleLine(newB.round, `${aDef.name} (${a.count}) бьёт ${UNITS[d.unitId].name}: -${res.killed}`));
   // Контратака.
   if (d.count > 0 && !d.hasRetaliated && !UNITS[d.unitId].ranged) {
     const ret = rollDamage(newB, d, a, false);
     a.count = ret.newCount;
     a.hp = ret.remainingHp;
     d.hasRetaliated = true;
-    newB.log.push(`${UNITS[d.unitId].name} (${d.count}) отвечает: -${ret.killed}`);
+    newB.log.push(battleLine(newB.round, `${UNITS[d.unitId].name} (${d.count}) отвечает: -${ret.killed}`));
   }
   return finalizeTurn(newB, a.id);
 }
@@ -248,7 +262,7 @@ export function doShoot(b: BattleState, attackerId: string, defenderId: string):
   const res = rollDamage(newB, a, d, true);
   d.count = res.newCount;
   d.hp = res.remainingHp;
-  newB.log.push(`${UNITS[a.unitId].name} стреляет в ${UNITS[d.unitId].name}: -${res.killed}`);
+  newB.log.push(battleLine(newB.round, `${UNITS[a.unitId].name} стреляет в ${UNITS[d.unitId].name}: -${res.killed}`));
   return finalizeTurn(newB, a.id);
 }
 
@@ -256,19 +270,19 @@ export function doMove(b: BattleState, stackId: string, to: Coord): BattleState 
   const newB: BattleState = { ...b, stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
   const s = newB.stacks.find(st => st.id === stackId)!;
   s.pos = { ...to };
-  newB.log.push(`${UNITS[s.unitId].name} перемещается.`);
+  newB.log.push(battleLine(newB.round, `${UNITS[s.unitId].name} перемещается.`));
   return finalizeTurn(newB, s.id);
 }
 
 export function doWait(b: BattleState, stackId: string): BattleState {
   const newB: BattleState = { ...b, stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
-  newB.log.push(`${UNITS[newB.stacks.find(s => s.id === stackId)!.unitId].name} ждёт.`);
+  newB.log.push(battleLine(newB.round, `${UNITS[newB.stacks.find(s => s.id === stackId)!.unitId].name} ждёт.`));
   return finalizeTurn(newB, stackId);
 }
 
 export function doDefend(b: BattleState, stackId: string): BattleState {
   const newB: BattleState = { ...b, stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
-  newB.log.push(`${UNITS[newB.stacks.find(s => s.id === stackId)!.unitId].name} защищается.`);
+  newB.log.push(battleLine(newB.round, `${UNITS[newB.stacks.find(s => s.id === stackId)!.unitId].name} защищается.`));
   return finalizeTurn(newB, stackId);
 }
 
