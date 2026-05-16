@@ -254,6 +254,28 @@ select {
   display: block;
   cursor: pointer;
 }
+.map-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(20, 14, 10, 0.95);
+  border: 1px solid var(--gold);
+  padding: 6px 10px;
+  border-radius: 3px;
+  max-width: 240px;
+  font-size: 12px;
+  z-index: 50;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  transform: translateY(-50%);
+}
+.map-tooltip .tt-title {
+  color: var(--gold);
+  font-weight: bold;
+}
+.map-tooltip .tt-sub {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
 
 .side-panel {
   background: var(--bg-1);

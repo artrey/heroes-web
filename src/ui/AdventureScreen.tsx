@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 // Локальный импорт для удобства.
+import { ARTIFACTS as ARTIFACTS_LOCAL } from "../game/data/artifacts";
 import { UNITS as UNITS_LOCAL } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
@@ -245,6 +246,17 @@ export function AdventureScreen() {
 
       <div className="map-area" ref={containerRef}>
         <canvas ref={canvasRef} className="map-canvas" onClick={handleClick} onMouseMove={handleMouseMove} />
+        {hoverTile && revealed[`${hoverTile.x},${hoverTile.y}`] === true && (
+          <MapTooltip
+            tile={hoverTile}
+            map={map}
+            heroes={heroes}
+            towns={towns}
+            players={players}
+            camera={camera}
+            isVisibleNow={visible.has(`${hoverTile.x},${hoverTile.y}`)}
+          />
+        )}
       </div>
 
       <div className="side-panel">
@@ -528,4 +540,89 @@ function drawMinimap(
   const vh = Math.floor((ch / TILE_SIZE) * px);
   ctx.strokeStyle = "#ffd966";
   ctx.strokeRect(vx, vy, Math.min(vw, mmW - (vx - ox)), Math.min(vh, mmH - (vy - oy)));
+}
+
+function MapTooltip({
+  tile,
+  map,
+  heroes,
+  towns,
+  players,
+  camera,
+  isVisibleNow,
+}: {
+  tile: Coord;
+  map: NonNullable<ReturnType<typeof useGame.getState>["map"]>;
+  heroes: Record<string, Hero>;
+  towns: Record<string, ReturnType<typeof useGame.getState>["towns"][string]>;
+  players: Record<string, ReturnType<typeof useGame.getState>["players"][string]>;
+  camera: Coord;
+  isVisibleNow: boolean;
+}) {
+  // Сначала ищем героя на этой клетке (только если клетка сейчас видна).
+  const hero = isVisibleNow ? Object.values(heroes).find(h => h.pos.x === tile.x && h.pos.y === tile.y) : null;
+  const t = map.tiles[tile.y * map.width + tile.x];
+  const obj = t.objectId ? map.objects[t.objectId] : null;
+
+  const lines: { title: string; sub?: string }[] = [];
+  if (hero) {
+    const ow = players[hero.ownerId];
+    lines.push({ title: `${hero.icon} ${hero.name}`, sub: `${ow?.name ?? "—"} · ${hero.faction}` });
+    const totalUnits = hero.army.reduce((acc, s) => acc + s.count, 0);
+    lines.push({ title: "Армия", sub: `${totalUnits} существ` });
+  } else if (obj) {
+    if (obj.kind === "monster" && obj.unitId && obj.unitCount) {
+      const u = UNITS_LOCAL[obj.unitId];
+      lines.push({ title: `${u.icon} ${u.name}`, sub: countLabel(obj.unitCount) });
+      lines.push({ title: "Бой!", sub: `Атк ${u.attack} / Защ ${u.defense} / HP ${u.hp}` });
+    } else if (obj.kind === "dwelling") {
+      const tw = towns[obj.id];
+      const ow = tw?.ownerId ? players[tw.ownerId] : null;
+      lines.push({ title: `${obj.icon} ${tw?.name ?? "Город"}`, sub: ow ? `Владелец: ${ow.name}` : "Нейтральный" });
+    } else if (obj.kind === "resource" && obj.resource) {
+      lines.push({ title: `${obj.icon} ${RESOURCE_NAMES[obj.resource]}`, sub: `+${obj.amount}` });
+    } else if (obj.kind === "mine" && obj.mineResource) {
+      const ow = obj.ownerId ? players[obj.ownerId] : null;
+      lines.push({
+        title: `${obj.icon} Шахта (${RESOURCE_NAMES[obj.mineResource]})`,
+        sub: ow ? `Владелец: ${ow.name}` : "Нейтральная",
+      });
+    } else if (obj.kind === "artifact" && obj.artifactId) {
+      const a = ARTIFACTS_LOCAL[obj.artifactId];
+      lines.push({ title: `${a.icon} ${a.name}`, sub: a.description });
+    } else if (obj.kind === "chest") {
+      lines.push({ title: "🎁 Сундук", sub: "Неизвестное содержимое" });
+    } else if (obj.kind === "tree") {
+      lines.push({ title: "🌲 Лес", sub: "Непроходимо" });
+    } else if (obj.kind === "mountain") {
+      lines.push({ title: "⛰️ Горы", sub: "Непроходимо" });
+    }
+  } else {
+    lines.push({ title: `Поле (${t.terrain})` });
+  }
+
+  // Позиционирование: справа-снизу от курсора в координатах map-area.
+  const left = Math.min(tile.x * TILE_SIZE - camera.x + TILE_SIZE + 8, 99999);
+  const top = tile.y * TILE_SIZE - camera.y + TILE_SIZE / 2;
+
+  return (
+    <div className="map-tooltip" style={{ left, top }}>
+      {lines.map((l, i) => (
+        <div key={i}>
+          <div className="tt-title">{l.title}</div>
+          {l.sub && <div className="tt-sub">{l.sub}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Грубая шкала количества — как в HoMM3, чтобы не выдавать точные числа.
+function countLabel(n: number): string {
+  if (n <= 4) return `Несколько (~${n})`;
+  if (n <= 9) return "Стая";
+  if (n <= 19) return "Толпа";
+  if (n <= 49) return "Орда";
+  if (n <= 99) return "Полчище";
+  return "Легион";
 }
