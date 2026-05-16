@@ -13,12 +13,18 @@ interface StartArgs {
   defenderHero: Hero | null;
   defenderObjectId: string | null;
   defenderArmy?: UnitStack[];
+  // Дополнительные бонусы для сторон — например, буф ИИ на высокой сложности.
+  attackerExtraBonus?: Partial<HeroBonus>;
+  defenderExtraBonus?: Partial<HeroBonus>;
 }
 
 export function startBattle(args: StartArgs): BattleState {
   const stacks: BattleStack[] = [];
-  const attackerBonus = getHeroBonus(args.attackerHero);
-  const defenderBonus = args.defenderHero ? getHeroBonus(args.defenderHero) : EMPTY_BONUS;
+  const attackerBonus = mergeBonus(getHeroBonus(args.attackerHero), args.attackerExtraBonus);
+  const defenderBonus = mergeBonus(
+    args.defenderHero ? getHeroBonus(args.defenderHero) : EMPTY_BONUS,
+    args.defenderExtraBonus,
+  );
 
   // Атакующий — слева, столбец 0.
   args.attackerHero.army.forEach((u, idx) => {
@@ -91,6 +97,17 @@ function battleLine(round: number, text: string): string {
 
 function bonusFor(b: BattleState, side: "attacker" | "defender"): HeroBonus {
   return side === "attacker" ? b.attackerBonus : b.defenderBonus;
+}
+
+function mergeBonus(base: HeroBonus, extra?: Partial<HeroBonus>): HeroBonus {
+  if (!extra) return base;
+  return {
+    attack: base.attack + (extra.attack ?? 0),
+    defense: base.defense + (extra.defense ?? 0),
+    speed: base.speed + (extra.speed ?? 0),
+    hpBonus: base.hpBonus + (extra.hpBonus ?? 0),
+    movement: base.movement + (extra.movement ?? 0),
+  };
 }
 
 function effectiveStats(stack: BattleStack, bonus: HeroBonus) {

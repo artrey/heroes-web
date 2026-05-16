@@ -1,8 +1,12 @@
 import { useState } from "react";
 
+import { DIFFICULTY_PRESETS } from "../game/data/difficulty";
 import { TEMPLATES } from "../game/data/templates";
 import { useGame } from "../game/store";
-import type { Faction } from "../game/types";
+import type { Difficulty, Faction } from "../game/types";
+
+const DIFFICULTY_ORDER: Difficulty[] = ["easy", "normal", "hard"];
+const DIFFICULTY_ICON: Record<Difficulty, string> = { easy: "🟢", normal: "🟡", hard: "🔴" };
 
 export function NewGameScreen() {
   const startGame = useGame(s => s.startGame);
@@ -13,6 +17,7 @@ export function NewGameScreen() {
   const [faction, setFaction] = useState<Faction>("castle");
   const [playerName, setPlayerName] = useState("Игрок");
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0xfffffff));
+  const [difficulty, setDifficulty] = useState<Difficulty>("normal");
 
   const tmpl = TEMPLATES.find(t => t.id === templateId)!;
 
@@ -63,6 +68,26 @@ export function NewGameScreen() {
       </div>
 
       <div className="section">
+        <h3>Сложность</h3>
+        <div className="faction-picker">
+          {DIFFICULTY_ORDER.map(d => {
+            const p = DIFFICULTY_PRESETS[d];
+            return (
+              <div
+                key={d}
+                className={`faction-card ${difficulty === d ? "selected" : ""}`}
+                onClick={() => setDifficulty(d)}
+              >
+                <span className="emoji">{DIFFICULTY_ICON[d]}</span>
+                <div>{p.label}</div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>{p.description}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="section">
         <h3>Параметры</h3>
         <div className="form-row">
           <label>Имя игрока:</label>
@@ -102,6 +127,7 @@ export function NewGameScreen() {
               playerFaction: faction,
               playerName,
               seed,
+              difficulty,
             });
           }}
         >

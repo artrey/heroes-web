@@ -200,6 +200,8 @@ export interface BattleState {
   log: string[];
 }
 
+export type Difficulty = "easy" | "normal" | "hard";
+
 export interface NewGameOptions {
   templateId: string;
   mapWidth: number;
@@ -208,6 +210,7 @@ export interface NewGameOptions {
   playerFaction: Faction;
   playerName: string;
   seed: number;
+  difficulty: Difficulty;
 }
 
 export interface GameState {

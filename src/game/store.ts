@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { isBattleOver, startBattle, stepBattleAI } from "./battle/engine";
 import { ARTIFACTS, getArtifact } from "./data/artifacts";
 import { FACTION_BUILDINGS, getBuilding } from "./data/buildings";
+import { getPreset } from "./data/difficulty";
 import { pickHeroProto } from "./data/heroes";
 import { reverseRate } from "./data/marketRates";
 import { FACTION_UNIT_ORDER, getUnit, UNITS } from "./data/units";
@@ -16,6 +17,7 @@ import type {
   GameState,
   Hero,
   HeroArtifacts,
+  HeroBonus,
   MapObject,
   NewGameOptions,
   Player,
@@ -178,6 +180,7 @@ export const useGame = create<GameState & Actions>()(
         });
 
         const rng = mulberry32(opts.seed ^ 0xdeadbeef);
+        const preset = getPreset(opts.difficulty);
         const players: Record<string, Player> = {};
         const heroes: Record<string, Hero> = {};
         const towns: Record<string, Town> = {};
@@ -218,9 +221,11 @@ export const useGame = create<GameState & Actions>()(
           // Герой.
           const proto = pickHeroProto(start.faction, rng);
           const hid = makeId("h");
+          const isAi = i !== 0;
+          const armyMult = isAi ? preset.aiArmyMult : 1;
           const army: UnitStack[] = proto.startingArmy.map(s => ({
             unitId: s.unitId,
-            count: randInt(rng, s.min, s.max),
+            count: Math.max(1, Math.round(randInt(rng, s.min, s.max) * armyMult)),
           }));
           const hero: Hero = {
             id: hid,
@@ -240,7 +245,7 @@ export const useGame = create<GameState & Actions>()(
           heroes[hid] = hero;
 
           // Игрок.
-          const res: ResourceBag = { gold: 10000, wood: 20, ore: 20, mercury: 5, sulfur: 5, crystal: 5, gems: 5 };
+          const res: ResourceBag = isAi ? { ...preset.aiResources } : { ...preset.playerResources };
           let player: Player = {
             id: pid,
             name: i === 0 ? opts.playerName : `Противник ${i}`,
@@ -361,6 +366,8 @@ export const useGame = create<GameState & Actions>()(
               attackerHero: newHero,
               defenderHero: otherHero,
               defenderObjectId: null,
+              attackerExtraBonus: aiBattleBonus(s, newHero),
+              defenderExtraBonus: aiBattleBonus(s, otherHero),
             });
             set({
               heroes: { ...s.heroes, [hero.id]: newHero },
@@ -441,7 +448,7 @@ export const useGame = create<GameState & Actions>()(
             week += 1;
             if ((week - 1) % 4 === 0) month += 1;
             // Прирост юнитов в городах.
-            const newTowns = applyWeeklyGrowth(s.towns);
+            const newTowns = applyWeeklyGrowth(s);
             set({ towns: newTowns });
           }
           log.push(logLine(day, "— начало дня —"));
@@ -975,7 +982,7 @@ export const useGame = create<GameState & Actions>()(
     }),
     {
       name: "heroes-web-save",
-      version: 4,
+      version: 5,
       migrate: (persisted, fromVersion) => {
         const state = persisted as Partial<GameState>;
         // v1 → v2: artifacts на герое теперь { equipped, backpack } вместо string[].
@@ -1008,6 +1015,13 @@ export const useGame = create<GameState & Actions>()(
             if (!h.statBonus) h.statBonus = { attack: 0, defense: 0 };
           }
         }
+        // v4 → v5: появилась сложность. Для старых сейвов считаем как "normal".
+        if (fromVersion < 5 && state?.options && !state.options.difficulty) {
+          state.options.difficulty = "normal";
+        }
+        if (fromVersion < 5 && state) {
+          if (!state.pendingMoveAfterCombat) state.pendingMoveAfterCombat = null;
+        }
         return state as GameState;
       },
     },
@@ -1031,15 +1045,32 @@ function addToArmy(army: UnitStack[], unitId: string, count: number): UnitStack[
   return out;
 }
 
-function applyWeeklyGrowth(towns: Record<string, Town>): Record<string, Town> {
+// Боевой бонус ИИ из текущей сложности — применяем к стороне, чей герой принадлежит ИИ
+// (или к защитнику, если нейтральные охраняют объект и они тоже считаются «не-человеком»).
+function aiBattleBonus(state: GameState, hero: Hero | null): Partial<HeroBonus> | undefined {
+  if (!state.options) return undefined;
+  const preset = getPreset(state.options.difficulty);
+  if (!preset.aiCombatBonus.attack && !preset.aiCombatBonus.defense) return undefined;
+  // Защитник без героя — нейтральный монстр/гарнизон, бонусы для них не применяем.
+  if (!hero) return undefined;
+  const owner = state.players[hero.ownerId];
+  if (!owner || owner.isHuman) return undefined;
+  return preset.aiCombatBonus;
+}
+
+function applyWeeklyGrowth(state: GameState): Record<string, Town> {
   const out: Record<string, Town> = {};
-  for (const [id, t] of Object.entries(towns)) {
+  const preset = state.options ? getPreset(state.options.difficulty) : null;
+  for (const [id, t] of Object.entries(state.towns)) {
     const newAvail = { ...t.availableUnits };
+    const owner = t.ownerId ? state.players[t.ownerId] : null;
+    const mult = owner && !owner.isHuman && preset ? preset.aiGrowthMult : 1;
     for (const bId of t.built) {
       const def = FACTION_BUILDINGS[t.faction].find(b => b.id === bId);
       if (def?.produces) {
         const unit = UNITS[def.produces];
-        newAvail[def.produces] = (newAvail[def.produces] ?? 0) + unit.growth;
+        const inc = Math.max(1, Math.round(unit.growth * mult));
+        newAvail[def.produces] = (newAvail[def.produces] ?? 0) + inc;
       }
     }
     out[id] = { ...t, availableUnits: newAvail };
@@ -1208,6 +1239,7 @@ function interactWithObject(objId: string, heroId?: string) {
       defenderHero: null,
       defenderObjectId: obj.id,
       defenderArmy: [{ unitId: obj.unitId, count: obj.unitCount }],
+      attackerExtraBonus: aiBattleBonus(s, hero),
     });
     useGame.setState({ battle, phase: "battle" });
     return;
@@ -1233,6 +1265,7 @@ function interactWithObject(objId: string, heroId?: string) {
           defenderHero: null,
           defenderObjectId: town.id,
           defenderArmy: town.garrison,
+          attackerExtraBonus: aiBattleBonus(s, hero),
         });
         useGame.setState({ battle, phase: "battle" });
       }
@@ -1436,7 +1469,14 @@ function moveAiHero(heroId: string, target: Coord) {
     const defender = useGame.getState().heroes[battleWithHero];
     if (defender) {
       const attacker = useGame.getState().heroes[heroId];
-      const battle = startBattle({ attackerHero: attacker, defenderHero: defender, defenderObjectId: null });
+      const stateNow = useGame.getState();
+      const battle = startBattle({
+        attackerHero: attacker,
+        defenderHero: defender,
+        defenderObjectId: null,
+        attackerExtraBonus: aiBattleBonus(stateNow, attacker),
+        defenderExtraBonus: aiBattleBonus(stateNow, defender),
+      });
       useGame.setState({ battle, phase: "battle" });
       runAiBattle();
     }
