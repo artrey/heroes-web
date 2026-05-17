@@ -18,6 +18,7 @@ import {
   isBattleOver,
   isValidSpellTarget,
   previewDamage,
+  previewSpell,
   reachable,
   stackTotalHp,
   stepBattleAI,
@@ -198,7 +199,14 @@ export function BattleScreen() {
           }}
         />
         {hoverStack && hoverClient && (
-          <BattleTooltip battle={battle} client={hoverClient} stack={hoverStack} activeStackId={act?.id ?? null} />
+          <BattleTooltip
+            battle={battle}
+            client={hoverClient}
+            stack={hoverStack}
+            activeStackId={act?.id ?? null}
+            castSpellId={castSpellId}
+            casterSide={act?.side ?? null}
+          />
         )}
       </div>
       <div className="battle-controls">
@@ -509,23 +517,34 @@ function BattleTooltip({
   client,
   stack,
   activeStackId,
+  castSpellId,
+  casterSide,
 }: {
   battle: BattleState;
   client: { x: number; y: number };
   stack: BattleStack;
   activeStackId: string | null;
+  castSpellId: string | null;
+  casterSide: "attacker" | "defender" | null;
 }) {
   const def = UNITS[stack.unitId];
   const { current, max } = stackTotalHp(battle, stack);
   const hpPct = Math.max(0, Math.min(100, Math.round((current / max) * 100)));
-  // Если активный — это другой стек враждебной стороны — посчитать превью урона.
-  let preview: ReturnType<typeof previewDamage> = null;
-  if (activeStackId && activeStackId !== stack.id) {
+
+  // В режиме выбора цели для заклинания — показываем эффект спелла на эту цель,
+  // а не урон от текущего стека.
+  let spellPreview: ReturnType<typeof previewSpell> = null;
+  let physPreview: ReturnType<typeof previewDamage> = null;
+  if (castSpellId && casterSide) {
+    spellPreview = previewSpell(battle, casterSide, castSpellId, stack.id);
+  } else if (activeStackId && activeStackId !== stack.id) {
     const active = battle.stacks.find(s => s.id === activeStackId);
     if (active && active.side !== stack.side && active.count > 0) {
-      preview = previewDamage(battle, active.id, stack.id);
+      physPreview = previewDamage(battle, active.id, stack.id);
     }
   }
+  const spellDef = castSpellId ? getSpell(castSpellId) : null;
+
   // Позиционирование: рядом с курсором, в viewport-координатах.
   const TT_W = 260;
   const TT_H = 140;
@@ -545,13 +564,34 @@ function BattleTooltip({
         Атк {def.attack} · Защ {def.defense} · HP {def.hp} · Ск {def.speed}
         {def.ranged ? ` · ⏵ ${stack.shots}` : ""}
       </div>
-      {preview && (
+      {castSpellId && spellDef && (
         <div className="tt-pred">
-          {preview.ranged ? "⏵ Выстрел: " : "⚔️ Удар: "}
-          {preview.minDmg === preview.maxDmg ? preview.minDmg : `${preview.minDmg}–${preview.maxDmg}`} урона,{" "}
-          {preview.minKilled === preview.maxKilled
-            ? `убьёт ${preview.minKilled}`
-            : `убьёт ${preview.minKilled}–${preview.maxKilled}`}
+          {spellDef.icon} {spellDef.name}:{" "}
+          {spellPreview == null ? (
+            <span style={{ color: "var(--danger)" }}>недопустимая цель</span>
+          ) : spellPreview.kind === "damage" ? (
+            <>
+              {spellPreview.dmg} урона, убьёт {spellPreview.killed}
+              {!spellPreview.canCast && <span style={{ color: "var(--danger)" }}> · нельзя кастовать</span>}
+            </>
+          ) : (
+            <>
+              {spellPreview.text}
+              {!spellPreview.canCast && <span style={{ color: "var(--danger)" }}> · нельзя кастовать</span>}
+            </>
+          )}
+        </div>
+      )}
+      {!castSpellId && physPreview && (
+        <div className="tt-pred">
+          {physPreview.ranged ? "⏵ Выстрел: " : "⚔️ Удар: "}
+          {physPreview.minDmg === physPreview.maxDmg
+            ? physPreview.minDmg
+            : `${physPreview.minDmg}–${physPreview.maxDmg}`}{" "}
+          урона,{" "}
+          {physPreview.minKilled === physPreview.maxKilled
+            ? `убьёт ${physPreview.minKilled}`
+            : `убьёт ${physPreview.minKilled}–${physPreview.maxKilled}`}
         </div>
       )}
     </div>

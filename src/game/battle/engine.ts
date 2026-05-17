@@ -580,6 +580,36 @@ export function doCastSpell(
   return newB;
 }
 
+// Превью эффекта заклинания: что случится при касте `spellId` стороной `casterSide`
+// в стек `targetId`. Возвращает null, если цель невалидна (не та сторона) или каст
+// невозможен (нет маны / уже кастовали). Сам бой не меняет.
+export function previewSpell(
+  b: BattleState,
+  casterSide: "attacker" | "defender",
+  spellId: string,
+  targetId: string,
+):
+  | { kind: "damage"; dmg: number; killed: number; canCast: boolean }
+  | { kind: "buff" | "debuff"; text: string; canCast: boolean }
+  | null {
+  const sp = getSpell(spellId);
+  if (!sp) return null;
+  if (!isValidSpellTarget(b, casterSide, spellId, targetId)) return null;
+  const target = b.stacks.find(s => s.id === targetId);
+  if (!target) return null;
+  const magic = getSideMagic(b, casterSide);
+  const canCast = magic.mana >= sp.manaCost && canCastThisRound(b, casterSide);
+  if (sp.effect === "damage") {
+    const raw = sp.basePower + sp.perPower * magic.spellPower;
+    const res = applyDamageToStack(b, target, raw);
+    return { kind: "damage", dmg: res.dmg, killed: res.killed, canCast };
+  }
+  if (sp.effect === "buffAttack") return { kind: "buff", text: `+${sp.basePower} к атаке`, canCast };
+  if (sp.effect === "buffSpeed") return { kind: "buff", text: `+${sp.basePower} к скорости`, canCast };
+  if (sp.effect === "debuffSpeed") return { kind: "debuff", text: `−${sp.basePower} к скорости`, canCast };
+  return null;
+}
+
 // Адъяцентные пустые клетки рядом с defender, отсортированные по расстоянию до attacker.
 export function approachTiles(b: BattleState, attackerId: string, defenderId: string): Coord[] {
   const attacker = b.stacks.find(s => s.id === attackerId);
