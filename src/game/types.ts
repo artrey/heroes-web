@@ -95,7 +95,9 @@ export interface Hero {
   artifacts: HeroArtifacts;
   level: number;
   xp: number;
-  statBonus: { attack: number; defense: number };
+  // Прибавки от повышения уровней. Со временем сюда копятся +1 к одной из
+  // четырёх характеристик за каждый уровень.
+  statBonus: { attack: number; defense: number; spellPower: number; knowledge: number };
   // Магические параметры. maxMana = knowledge * 10, восстанавливается в гильдии магов / в начале боя нет.
   spellPower: number;
   knowledge: number;

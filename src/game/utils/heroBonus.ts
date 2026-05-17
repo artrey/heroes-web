@@ -15,6 +15,8 @@ export function getHeroBonus(hero: Hero): HeroBonus {
   }
   out.attack += hero.statBonus?.attack ?? 0;
   out.defense += hero.statBonus?.defense ?? 0;
+  out.spellPower += hero.statBonus?.spellPower ?? 0;
+  out.knowledge += hero.statBonus?.knowledge ?? 0;
   return out;
 }
 

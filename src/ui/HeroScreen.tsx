@@ -139,11 +139,11 @@ export function HeroScreen() {
                 speed: bonus.speed,
                 hpBonus: bonus.hpBonus,
                 movement: bonus.movement,
-                spellPower: bonus.spellPower,
-                knowledge: bonus.knowledge,
+                spellPower: bonus.spellPower - lvl.spellPower,
+                knowledge: bonus.knowledge - lvl.knowledge,
                 manaMult: bonus.manaMult,
               };
-              const hasLvl = lvl.attack + lvl.defense > 0;
+              const hasLvl = lvl.attack + lvl.defense + lvl.spellPower + lvl.knowledge > 0;
               const gearTotal =
                 gear.attack +
                 gear.defense +
@@ -165,6 +165,8 @@ export function HeroScreen() {
                     <>
                       {lvl.attack ? <BonusRow label="⚔️ Атака" value={`+${lvl.attack}`} /> : null}
                       {lvl.defense ? <BonusRow label="🛡️ Защита" value={`+${lvl.defense}`} /> : null}
+                      {lvl.spellPower ? <BonusRow label="🔮 Сила магии" value={`+${lvl.spellPower}`} /> : null}
+                      {lvl.knowledge ? <BonusRow label="📚 Знания" value={`+${lvl.knowledge}`} /> : null}
                     </>
                   ) : (
                     <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>—</div>

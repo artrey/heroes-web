@@ -195,8 +195,8 @@ function HeroPanel({
     speed: bonus.speed,
     hpBonus: bonus.hpBonus,
     movement: bonus.movement,
-    spellPower: bonus.spellPower,
-    knowledge: bonus.knowledge,
+    spellPower: bonus.spellPower - lvl.spellPower,
+    knowledge: bonus.knowledge - lvl.knowledge,
     manaMult: bonus.manaMult,
   };
   return (
@@ -295,7 +295,7 @@ function BonusBreakdown({
   lvl,
   gear,
 }: {
-  lvl: { attack: number; defense: number };
+  lvl: { attack: number; defense: number; spellPower: number; knowledge: number };
   gear: {
     attack: number;
     defense: number;
@@ -310,6 +310,8 @@ function BonusBreakdown({
   const lvlParts: string[] = [];
   if (lvl.attack) lvlParts.push(`⚔️ +${lvl.attack}`);
   if (lvl.defense) lvlParts.push(`🛡️ +${lvl.defense}`);
+  if (lvl.spellPower) lvlParts.push(`🔮 +${lvl.spellPower}`);
+  if (lvl.knowledge) lvlParts.push(`📚 +${lvl.knowledge}`);
   const gearParts: string[] = [];
   if (gear.attack) gearParts.push(`⚔️ +${gear.attack}`);
   if (gear.defense) gearParts.push(`🛡️ +${gear.defense}`);

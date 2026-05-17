@@ -236,7 +236,7 @@ export const useGame = create<GameState & Actions>()(
             artifacts: { equipped: {}, backpack: [] },
             level: 1,
             xp: 0,
-            statBonus: { attack: 0, defense: 0 },
+            statBonus: { attack: 0, defense: 0, spellPower: 0, knowledge: 0 },
             spellPower: 1,
             knowledge: 1,
             mana: 10,
@@ -608,7 +608,7 @@ export const useGame = create<GameState & Actions>()(
           artifacts: { equipped: {}, backpack: [] },
           level: 1,
           xp: 0,
-          statBonus: { attack: 0, defense: 0 },
+          statBonus: { attack: 0, defense: 0, spellPower: 0, knowledge: 0 },
           spellPower: 1,
           knowledge: 1,
           mana: 10,
@@ -964,11 +964,9 @@ export const useGame = create<GameState & Actions>()(
         const newStatBonus = { ...attacker.statBonus };
         if (newLevel > attacker.level) {
           for (let lvl = attacker.level + 1; lvl <= newLevel; lvl++) {
-            const which = Math.random() < 0.5 ? "attack" : "defense";
+            const which = rollLevelUpStat();
             newStatBonus[which] += 1;
-            log.push(
-              logLine(s.day, `${attacker.name} — уровень ${lvl}! +1 ${which === "attack" ? "к атаке" : "к защите"}.`),
-            );
+            log.push(logLine(s.day, `${attacker.name} — уровень ${lvl}! +1 ${LEVEL_UP_LABEL[which]}.`));
           }
         }
         log.push(logLine(s.day, `${attacker.name} получает ${b.xpReward} опыта.`));
@@ -1072,7 +1070,7 @@ export const useGame = create<GameState & Actions>()(
       name: "heroes-web-save",
       // v6 — baseline после релиза. С этой точки любое изменение формата
       // ОБЯЗАНО сопровождаться миграцией в migrate() ниже, а не просто бампом version.
-      version: 7,
+      version: 8,
       migrate: (persisted, fromVersion) => {
         const state = persisted as Partial<GameState>;
         // Сейвы версий < 6 — времён до релиза, формат менялся свободно. Их не мигрируем,
@@ -1111,6 +1109,25 @@ export const useGame = create<GameState & Actions>()(
           state.battle = null;
           if (state.phase === "battle") state.phase = "adventure";
         }
+        if (fromVersion < 8) {
+          // v8: statBonus теперь содержит spellPower/knowledge. Старые сейвы — нули.
+          if (state.heroes) {
+            const newHeroes: Record<string, Hero> = {};
+            for (const [id, h] of Object.entries(state.heroes)) {
+              const old = (h as Partial<Hero>).statBonus as Partial<Hero["statBonus"]> | undefined;
+              newHeroes[id] = {
+                ...h,
+                statBonus: {
+                  attack: old?.attack ?? 0,
+                  defense: old?.defense ?? 0,
+                  spellPower: old?.spellPower ?? 0,
+                  knowledge: old?.knowledge ?? 0,
+                },
+              } as Hero;
+            }
+            state.heroes = newHeroes;
+          }
+        }
         // Сюда добавляются ветки `if (fromVersion < N) { ... }` для каждой будущей версии.
         return state as GameState;
       },
@@ -1119,6 +1136,22 @@ export const useGame = create<GameState & Actions>()(
 );
 
 // =================== ВСПОМОГАТЕЛЬНОЕ ===================
+
+// Доступные «прокачиваемые» характеристики при повышении уровня. Распределение
+// равномерное — игроку важна универсальность, специализация решается артефактами.
+const LEVEL_UP_STATS = ["attack", "defense", "spellPower", "knowledge"] as const;
+type LevelUpStat = (typeof LEVEL_UP_STATS)[number];
+
+const LEVEL_UP_LABEL: Record<LevelUpStat, string> = {
+  attack: "к атаке",
+  defense: "к защите",
+  spellPower: "к силе магии",
+  knowledge: "к знаниям",
+};
+
+function rollLevelUpStat(): LevelUpStat {
+  return LEVEL_UP_STATS[Math.floor(Math.random() * LEVEL_UP_STATS.length)];
+}
 
 // Применить эффект гильдии магов: герой учит все доступные в городе заклинания
 // и восстанавливает ману до эффективного максимума (с учётом артефактов).
@@ -1279,11 +1312,9 @@ function interactWithObject(objId: string, heroId?: string) {
       const levelUps: string[] = [];
       if (newLevel > hero.level) {
         for (let lvl = hero.level + 1; lvl <= newLevel; lvl++) {
-          const which = Math.random() < 0.5 ? "attack" : "defense";
+          const which = rollLevelUpStat();
           newStatBonus[which] += 1;
-          levelUps.push(
-            logLine(s.day, `${hero.name} — уровень ${lvl}! +1 ${which === "attack" ? "к атаке" : "к защите"}.`),
-          );
+          levelUps.push(logLine(s.day, `${hero.name} — уровень ${lvl}! +1 ${LEVEL_UP_LABEL[which]}.`));
         }
       }
       useGame.setState({
