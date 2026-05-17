@@ -52,6 +52,8 @@ export function AdventureScreen() {
   const [camera, setCamera] = useState<Coord>({ x: 0, y: 0 });
   const [hoverPath, setHoverPath] = useState<Coord[] | null>(null);
   const [hoverTile, setHoverTile] = useState<Coord | null>(null);
+  // Drag-панорамирование средней/правой кнопкой. Храним в ref, чтобы не плодить ре-рендеры.
+  const panRef = useRef<{ startX: number; startY: number; camX: number; camY: number } | null>(null);
 
   const activePlayer = players[activePlayerId];
   // Туман войны рисуем с точки зрения первого игрока-человека, чтобы при ходе ИИ
@@ -186,6 +188,21 @@ export function AdventureScreen() {
   }
 
   function handleMouseMove(ev: React.MouseEvent) {
+    // Drag-панорамирование средней/правой кнопкой — двигаем камеру за курсором.
+    if (panRef.current && map) {
+      const dx = ev.clientX - panRef.current.startX;
+      const dy = ev.clientY - panRef.current.startY;
+      const c = canvasRef.current;
+      if (c) {
+        const maxX = Math.max(0, map.width * TILE_SIZE - c.width);
+        const maxY = Math.max(0, map.height * TILE_SIZE - c.height);
+        setCamera({
+          x: Math.max(0, Math.min(maxX, panRef.current.camX - dx)),
+          y: Math.max(0, Math.min(maxY, panRef.current.camY - dy)),
+        });
+      }
+      return;
+    }
     // Drag по минимапу с зажатой левой кнопкой.
     if (ev.buttons === 1) {
       const mm = minimapTileAt(ev);
@@ -258,7 +275,53 @@ export function AdventureScreen() {
     if (canMoveSelected) moveHeroTo(t);
   }
 
-  // Прокрутка карты колесом / клавишами.
+  function handleMouseDown(ev: React.MouseEvent) {
+    // Средняя или правая кнопка — начинаем drag-панорамирование.
+    if (ev.button === 1 || ev.button === 2) {
+      ev.preventDefault();
+      panRef.current = {
+        startX: ev.clientX,
+        startY: ev.clientY,
+        camX: camera.x,
+        camY: camera.y,
+      };
+    }
+  }
+
+  function handleMouseUp() {
+    panRef.current = null;
+  }
+
+  // Прокрутка карты колесом. Используем нативный listener с passive: false,
+  // чтобы preventDefault действительно блокировал прокрутку страницы.
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c || !map) return;
+    function onWheel(e: WheelEvent) {
+      e.preventDefault();
+      // Shift + вертикальное колесо → горизонтальный скролл (привычка из браузера/GIS).
+      // Трекпад уже даёт обе оси сам, не трогаем.
+      let dx: number;
+      let dy: number;
+      if (e.shiftKey && e.deltaX === 0) {
+        dx = e.deltaY;
+        dy = 0;
+      } else {
+        dx = e.deltaX;
+        dy = e.deltaY;
+      }
+      const maxX = Math.max(0, map!.width * TILE_SIZE - c!.width);
+      const maxY = Math.max(0, map!.height * TILE_SIZE - c!.height);
+      setCamera(cam => ({
+        x: Math.max(0, Math.min(maxX, cam.x + dx)),
+        y: Math.max(0, Math.min(maxY, cam.y + dy)),
+      }));
+    }
+    c.addEventListener("wheel", onWheel, { passive: false });
+    return () => c.removeEventListener("wheel", onWheel);
+  }, [map]);
+
+  // Прокрутка карты клавишами.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const step = 64;
@@ -307,7 +370,16 @@ export function AdventureScreen() {
       </div>
 
       <div className="map-area" ref={containerRef}>
-        <canvas ref={canvasRef} className="map-canvas" onClick={handleClick} onMouseMove={handleMouseMove} />
+        <canvas
+          ref={canvasRef}
+          className="map-canvas"
+          onClick={handleClick}
+          onMouseMove={handleMouseMove}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onContextMenu={e => e.preventDefault()}
+        />
         {hoverTile && revealed[`${hoverTile.x},${hoverTile.y}`] === true && (
           <MapTooltip
             tile={hoverTile}
