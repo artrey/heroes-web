@@ -460,10 +460,11 @@ function drawBattle(
       ctx.stroke();
     }
     ctx.lineWidth = 1;
-    // HP-полоса над жетоном.
-    const fullHp = unit.hp * s.count;
-    const curHp = Math.max(0, (s.count - 1) * unit.hp + s.hp);
-    const hpPct = Math.max(0, Math.min(1, curHp / fullHp));
+    // HP-полоса — для верхнего юнита стека (а не всего стека), иначе на больших
+    // стеках мощный удар почти не двигает полоску.
+    const sideBonus = s.side === "attacker" ? battle.attackerBonus : battle.defenderBonus;
+    const effUnitHp = Math.max(1, unit.hp + sideBonus.hpBonus);
+    const hpPct = Math.max(0, Math.min(1, s.hp / effUnitHp));
     drawHpBar(ctx, cx - 16, cy - 22, 32, 4, hpPct);
     // Эмодзи.
     ctx.font = "24px serif";
@@ -530,6 +531,10 @@ function BattleTooltip({
   const def = UNITS[stack.unitId];
   const { current, max } = stackTotalHp(battle, stack);
   const hpPct = Math.max(0, Math.min(100, Math.round((current / max) * 100)));
+  // HP верхнего юнита стека — это то, что бьют сейчас. Берём с учётом hpBonus стороны.
+  const sideBonus = stack.side === "attacker" ? battle.attackerBonus : battle.defenderBonus;
+  const topUnitMaxHp = Math.max(1, def.hp + sideBonus.hpBonus);
+  const topUnitHp = Math.max(0, Math.min(topUnitMaxHp, stack.hp));
 
   // В режиме выбора цели для заклинания — показываем эффект спелла на эту цель,
   // а не урон от текущего стека.
@@ -556,6 +561,9 @@ function BattleTooltip({
     <div className="battle-tooltip" style={{ left, top }}>
       <div className="tt-title">
         {def.icon} {def.name} × {stack.count}
+      </div>
+      <div className="tt-sub">
+        HP: {topUnitHp} / {topUnitMaxHp}
       </div>
       <div className="tt-sub">
         HP стека: {current} / {max} ({hpPct}%)
