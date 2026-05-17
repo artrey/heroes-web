@@ -72,6 +72,8 @@ export function startBattle(args: StartArgs): BattleState {
       pos: { x: 0, y },
       hasActed: false,
       hasRetaliated: false,
+      hasWaited: false,
+      defendDefenseBonus: 0,
       shots: def.shots ?? 0,
       tempBonus: { ...EMPTY_TEMP },
     });
@@ -91,6 +93,8 @@ export function startBattle(args: StartArgs): BattleState {
       pos: { x: BATTLE_W - 1, y },
       hasActed: false,
       hasRetaliated: false,
+      hasWaited: false,
+      defendDefenseBonus: 0,
       shots: def.shots ?? 0,
       tempBonus: { ...EMPTY_TEMP },
     });
@@ -178,7 +182,7 @@ function effectiveStats(stack: BattleStack, bonus: HeroBonus) {
   const t = stack.tempBonus;
   return {
     attack: def.attack + bonus.attack + t.attack,
-    defense: def.defense + bonus.defense + t.defense,
+    defense: def.defense + bonus.defense + t.defense + (stack.defendDefenseBonus ?? 0),
     speed: def.speed + bonus.speed + t.speed,
     hp: def.hp + bonus.hpBonus,
   };
@@ -455,31 +459,63 @@ export function doMove(b: BattleState, stackId: string, to: Coord): BattleState 
 }
 
 export function doWait(b: BattleState, stackId: string): BattleState {
+  const stk = b.stacks.find(s => s.id === stackId);
+  // Повторно ждать нельзя — в этом раунде у waiter'а уже одна попытка позже.
+  if (!stk || stk.hasWaited || stk.hasActed) return b;
   const newB: BattleState = { ...b, stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
-  newB.log.push(battleLine(newB.round, `${UNITS[newB.stacks.find(s => s.id === stackId)!.unitId].name} ждёт.`));
-  return finalizeTurn(newB, stackId);
+  const s = newB.stacks.find(st => st.id === stackId)!;
+  s.hasWaited = true;
+  newB.log.push(battleLine(newB.round, `${UNITS[s.unitId].name} ждёт.`));
+  return advanceCursor(newB);
 }
 
 export function doDefend(b: BattleState, stackId: string): BattleState {
   const newB: BattleState = { ...b, stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos } })), log: b.log.slice() };
-  newB.log.push(battleLine(newB.round, `${UNITS[newB.stacks.find(s => s.id === stackId)!.unitId].name} защищается.`));
+  const s = newB.stacks.find(st => st.id === stackId)!;
+  // +30% к текущей эффективной защите (с учётом героя и баффов), до конца раунда.
+  const effDef = effectiveStats(s, bonusFor(newB, s.side)).defense;
+  // Снимаем добавку, которая могла прийти от прошлого doDefend (защититься повторно
+  // нельзя — finalizeTurn ставит hasActed — но на всякий случай переснапшотим).
+  const before = effDef - (s.defendDefenseBonus ?? 0);
+  const newBonus = Math.max(1, Math.round(before * 0.3));
+  s.defendDefenseBonus = newBonus;
+  newB.log.push(battleLine(newB.round, `${UNITS[s.unitId].name} защищается (+${newBonus} к защите до конца раунда).`));
   return finalizeTurn(newB, stackId);
 }
 
 function finalizeTurn(b: BattleState, justActedId: string): BattleState {
   const s = b.stacks.find(st => st.id === justActedId);
   if (s) s.hasActed = true;
-  // Перейти к следующему живому стеку в turnOrder.
-  let idx = b.activeStackIdx;
+  return advanceCursor(b);
+}
+
+// Двухфазный выбор следующего активного стека:
+//   1) Идём вперёд по turnOrder среди тех, кто не ходил и не уходил в wait.
+//   2) Если такие закончились — переходим к waiter-фазе: те, кто нажал «ждать»,
+//      ходят в обратном порядке turnOrder (медленные первыми). Это «починенное»
+//      поведение wait: он переносит ход на конец раунда, а не пропускает совсем.
+//   3) Если и waiter'ы закончились — начинаем новый раунд.
+function advanceCursor(b: BattleState): BattleState {
   for (let i = 1; i <= b.turnOrder.length; i++) {
-    const candIdx = (idx + i) % b.turnOrder.length;
-    const cand = b.stacks.find(st => st.id === b.turnOrder[candIdx]);
-    if (cand && cand.count > 0 && !cand.hasActed) {
-      return { ...b, activeStackIdx: candIdx };
+    const idx = (b.activeStackIdx + i) % b.turnOrder.length;
+    const cand = b.stacks.find(st => st.id === b.turnOrder[idx]);
+    if (cand && cand.count > 0 && !cand.hasActed && !cand.hasWaited) {
+      return { ...b, activeStackIdx: idx };
     }
   }
-  // Если все ходили — новый раунд.
-  const newStacks = b.stacks.map(st => ({ ...st, hasActed: false, hasRetaliated: false }));
+  for (let i = b.turnOrder.length - 1; i >= 0; i--) {
+    const cand = b.stacks.find(st => st.id === b.turnOrder[i]);
+    if (cand && cand.count > 0 && !cand.hasActed && cand.hasWaited) {
+      return { ...b, activeStackIdx: i };
+    }
+  }
+  const newStacks = b.stacks.map(st => ({
+    ...st,
+    hasActed: false,
+    hasRetaliated: false,
+    hasWaited: false,
+    defendDefenseBonus: 0,
+  }));
   const newOrder = computeTurnOrder(newStacks, { attackerBonus: b.attackerBonus, defenderBonus: b.defenderBonus });
   return { ...b, stacks: newStacks, turnOrder: newOrder, activeStackIdx: 0, round: b.round + 1 };
 }
@@ -693,5 +729,7 @@ export function stepBattleAI(b: BattleState): { battle: BattleState } {
     if (!best || dist < best.d) best = { c: { x, y }, d: dist };
   }
   if (best) return { battle: doMove(b, act.id, best.c) };
-  return { battle: doWait(b, act.id) };
+  // Если стек уже воспользовался wait в этом раунде — повторно ждать он не может,
+  // защищаемся, чтобы движок не зацикливался на no-op'ах.
+  return { battle: act.hasWaited ? doDefend(b, act.id) : doWait(b, act.id) };
 }

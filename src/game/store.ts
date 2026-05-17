@@ -1086,7 +1086,7 @@ export const useGame = create<GameState & Actions>()(
       name: "heroes-web-save",
       // v6 — baseline после релиза. С этой точки любое изменение формата
       // ОБЯЗАНО сопровождаться миграцией в migrate() ниже, а не просто бампом version.
-      version: 9,
+      version: 11,
       migrate: (persisted, fromVersion) => {
         const state = persisted as Partial<GameState>;
         // Сейвы версий < 6 — времён до релиза, формат менялся свободно. Их не мигрируем,
@@ -1159,6 +1159,18 @@ export const useGame = create<GameState & Actions>()(
             }
             state.heroes = newHeroes;
           }
+        }
+        if (fromVersion < 10) {
+          // v10: формат BattleStack обновлён (добавлен hasWaited). Активный бой не
+          // мигрируем — просто роняем, при следующем сражении создастся в новом формате.
+          state.battle = null;
+          if (state.phase === "battle") state.phase = "adventure";
+        }
+        if (fromVersion < 11) {
+          // v11: «Защита» теперь даёт +30% к защите до конца раунда — у BattleStack
+          // появилось поле defendDefenseBonus. Активный бой роняем.
+          state.battle = null;
+          if (state.phase === "battle") state.phase = "adventure";
         }
         // Сюда добавляются ветки `if (fromVersion < N) { ... }` для каждой будущей версии.
         return state as GameState;

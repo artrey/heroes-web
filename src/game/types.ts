@@ -221,6 +221,11 @@ export interface BattleStack {
   pos: Coord; // позиция на гекс-поле (двойные координаты)
   hasActed: boolean;
   hasRetaliated: boolean;
+  // Стек воспользовался «ожиданием»: его ход переносится в конец раунда,
+  // где waiters ходят в обратном порядке инициативы.
+  hasWaited: boolean;
+  // +N к защите от действия «Защита», действует до конца раунда (в новом — 0).
+  defendDefenseBonus: number;
   shots: number;
   tempBonus: StackTempBonus;
 }

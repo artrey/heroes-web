@@ -229,7 +229,13 @@ export function BattleScreen() {
                 );
               })()}
             </div>
-            <button onClick={() => useGame.setState({ battle: doWait(battle, act.id) })}>Ждать (W)</button>
+            <button
+              disabled={act.hasWaited}
+              title={act.hasWaited ? "Уже ждали в этом раунде" : "Перенести ход в конец раунда"}
+              onClick={() => useGame.setState({ battle: doWait(battle, act.id) })}
+            >
+              Ждать (W)
+            </button>
             <button onClick={() => useGame.setState({ battle: doDefend(battle, act.id) })}>Защита (D)</button>
             {(() => {
               const m = getSideMagic(battle, act.side);
