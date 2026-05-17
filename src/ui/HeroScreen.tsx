@@ -107,31 +107,21 @@ export function HeroScreen() {
                 {hero.xp} (до ур. {hero.level + 1}: {xpToNextLevel(hero.xp)})
               </span>
             </div>
-            <div className="stat-row">
-              <span>⚔️ База атаки (от уровней)</span>
-              <span>+{hero.statBonus.attack}</span>
+            <div className="stat-row" title="Сумма: уровни + артефакты">
+              <span>⚔️ Атака</span>
+              <span>{bonus.attack}</span>
             </div>
-            <div className="stat-row">
-              <span>🛡️ База защиты (от уровней)</span>
-              <span>+{hero.statBonus.defense}</span>
+            <div className="stat-row" title="Сумма: уровни + артефакты">
+              <span>🛡️ Защита</span>
+              <span>{bonus.defense}</span>
             </div>
             <div className="stat-row" title="База + бонусы от артефактов">
               <span>🔮 Сила магии</span>
-              <span>
-                {effSpellPower}
-                {effSpellPower !== hero.spellPower && (
-                  <span style={{ color: "var(--text-dim)", marginLeft: 4 }}>(база {hero.spellPower})</span>
-                )}
-              </span>
+              <span>{effSpellPower}</span>
             </div>
             <div className="stat-row" title="База + бонусы от артефактов">
               <span>📚 Знания</span>
-              <span>
-                {effKnowledge}
-                {effKnowledge !== hero.knowledge && (
-                  <span style={{ color: "var(--text-dim)", marginLeft: 4 }}>(база {hero.knowledge})</span>
-                )}
-              </span>
+              <span>{effKnowledge}</span>
             </div>
             <div className="stat-row">
               <span>💧 Мана</span>
@@ -139,14 +129,13 @@ export function HeroScreen() {
                 {hero.mana} / {effMaxMana}
               </span>
             </div>
-            <div className="stat-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}>
-              <span style={{ color: "var(--text-dim)" }}>Бонусы от экипировки:</span>
-            </div>
             {(() => {
-              // Бонусы от экипировки = общий бонус минус прирост от уровней (он уже показан выше).
+              // Разбивка: вклад уровней и вклад экипировки. Считаем gear как
+              // полный бонус минус statBonus — так не нужно отдельно ходить по артефактам.
+              const lvl = hero.statBonus;
               const gear = {
-                attack: bonus.attack - hero.statBonus.attack,
-                defense: bonus.defense - hero.statBonus.defense,
+                attack: bonus.attack - lvl.attack,
+                defense: bonus.defense - lvl.defense,
                 speed: bonus.speed,
                 hpBonus: bonus.hpBonus,
                 movement: bonus.movement,
@@ -154,7 +143,8 @@ export function HeroScreen() {
                 knowledge: bonus.knowledge,
                 manaMult: bonus.manaMult,
               };
-              const total =
+              const hasLvl = lvl.attack + lvl.defense > 0;
+              const gearTotal =
                 gear.attack +
                 gear.defense +
                 gear.speed +
@@ -165,15 +155,40 @@ export function HeroScreen() {
                 gear.manaMult;
               return (
                 <>
-                  {gear.attack ? <BonusRow label="⚔️ Атака" value={`+${gear.attack}`} /> : null}
-                  {gear.defense ? <BonusRow label="🛡️ Защита" value={`+${gear.defense}`} /> : null}
-                  {gear.speed ? <BonusRow label="🏃 Скорость" value={`+${gear.speed}`} /> : null}
-                  {gear.hpBonus ? <BonusRow label="❤️ HP" value={`+${gear.hpBonus}`} /> : null}
-                  {gear.movement ? <BonusRow label="🥾 Доп. MP" value={`+${gear.movement}`} /> : null}
-                  {gear.spellPower ? <BonusRow label="🔮 Сила магии" value={`+${gear.spellPower}`} /> : null}
-                  {gear.knowledge ? <BonusRow label="📚 Знания" value={`+${gear.knowledge}`} /> : null}
-                  {gear.manaMult ? <BonusRow label="💧 Макс. мана" value={`+${gear.manaMult}%`} /> : null}
-                  {total === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>—</div>}
+                  <div
+                    className="stat-row"
+                    style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}
+                  >
+                    <span style={{ color: "var(--text-dim)" }}>От уровней:</span>
+                  </div>
+                  {hasLvl ? (
+                    <>
+                      {lvl.attack ? <BonusRow label="⚔️ Атака" value={`+${lvl.attack}`} /> : null}
+                      {lvl.defense ? <BonusRow label="🛡️ Защита" value={`+${lvl.defense}`} /> : null}
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>—</div>
+                  )}
+                  <div
+                    className="stat-row"
+                    style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}
+                  >
+                    <span style={{ color: "var(--text-dim)" }}>От артефактов:</span>
+                  </div>
+                  {gearTotal > 0 ? (
+                    <>
+                      {gear.attack ? <BonusRow label="⚔️ Атака" value={`+${gear.attack}`} /> : null}
+                      {gear.defense ? <BonusRow label="🛡️ Защита" value={`+${gear.defense}`} /> : null}
+                      {gear.speed ? <BonusRow label="🏃 Скорость" value={`+${gear.speed}`} /> : null}
+                      {gear.hpBonus ? <BonusRow label="❤️ HP" value={`+${gear.hpBonus}`} /> : null}
+                      {gear.movement ? <BonusRow label="🥾 Доп. MP" value={`+${gear.movement}`} /> : null}
+                      {gear.spellPower ? <BonusRow label="🔮 Сила магии" value={`+${gear.spellPower}`} /> : null}
+                      {gear.knowledge ? <BonusRow label="📚 Знания" value={`+${gear.knowledge}`} /> : null}
+                      {gear.manaMult ? <BonusRow label="💧 Макс. мана" value={`+${gear.manaMult}%`} /> : null}
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>—</div>
+                  )}
                 </>
               );
             })()}
