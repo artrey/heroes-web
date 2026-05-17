@@ -28,7 +28,7 @@ import type {
   UnitStack,
 } from "./types";
 import { ARTIFACT_SLOT_ORDER, VISION_RADIUS_HERO, VISION_RADIUS_TOWN } from "./types";
-import { getEffectiveMaxMana, getEffectiveMaxMP } from "./utils/heroBonus";
+import { getEffectiveKnowledge, getEffectiveMaxMana, getEffectiveMaxMP } from "./utils/heroBonus";
 import { makeId, resetIdCounter } from "./utils/id";
 import { levelFromXp } from "./utils/leveling";
 import { chebyshev, findPath, STEP_STRAIGHT, stepCost } from "./utils/pathfind";
@@ -453,6 +453,16 @@ export const useGame = create<GameState & Actions>()(
             const newTowns = applyWeeklyGrowth(s);
             set({ towns: newTowns });
           }
+          // Регенерация маны: +1 за каждую единицу знаний (с учётом артефактов).
+          // Применяем ко всем героям сразу, до последующей раздачи MP.
+          const regenHeroes = Object.fromEntries(
+            Object.entries(get().heroes).map(([id, h]) => {
+              const maxMana = getEffectiveMaxMana(h);
+              const regen = getEffectiveKnowledge(h);
+              return [id, { ...h, mana: Math.min(maxMana, h.mana + regen) }];
+            }),
+          );
+          set({ heroes: regenHeroes });
           log.push(logLine(day, "— начало дня —"));
         }
 
