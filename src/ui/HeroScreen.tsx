@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { ARTIFACTS, RARITY_COLOR, SLOT_ICON, SLOT_LABEL } from "../game/data/artifacts";
 import { FACTION_META } from "../game/data/factions";
+import { getSpell } from "../game/data/spells";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { ArtifactSlot } from "../game/types";
@@ -105,6 +106,22 @@ export function HeroScreen() {
               <span>🛡️ База защиты (от уровней)</span>
               <span>+{hero.statBonus.defense}</span>
             </div>
+            <div className="stat-row">
+              <span>🔮 Сила магии</span>
+              <span>{hero.spellPower}</span>
+            </div>
+            <div className="stat-row">
+              <span>📚 Знания</span>
+              <span>
+                {hero.knowledge} (макс. маны {hero.maxMana})
+              </span>
+            </div>
+            <div className="stat-row">
+              <span>💧 Мана</span>
+              <span>
+                {hero.mana} / {hero.maxMana}
+              </span>
+            </div>
             <div className="stat-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}>
               <span style={{ color: "var(--text-dim)" }}>Бонусы от экипировки:</span>
             </div>
@@ -198,6 +215,31 @@ export function HeroScreen() {
                 >
                   <span style={{ fontSize: 24 }}>{def.icon}</span>
                   <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{def.name}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <h3 style={{ color: "var(--gold)", margin: "20px 0 8px" }}>
+            Заклинания ({hero.spells.length}){" "}
+            <span style={{ color: "var(--text-dim)", fontSize: 12, fontWeight: "normal" }}>
+              · мана {hero.mana} / {hero.maxMana} · сила {hero.spellPower}
+            </span>
+          </h3>
+          <div className="spellbook-grid">
+            {hero.spells.length === 0 && (
+              <div style={{ color: "var(--text-dim)", fontSize: 12, padding: "8px 0" }}>
+                Нет заклинаний — постройте гильдию магов и зайдите в город.
+              </div>
+            )}
+            {hero.spells.map(sid => {
+              const sp = getSpell(sid);
+              if (!sp) return null;
+              return (
+                <div key={sid} className="spell-slot" title={`${sp.name} (ур. ${sp.level}) — ${sp.description}`}>
+                  <span style={{ fontSize: 22 }}>{sp.icon}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{sp.name}</span>
+                  <span style={{ fontSize: 10, color: "var(--accent)" }}>💧 {sp.manaCost}</span>
                 </div>
               );
             })}

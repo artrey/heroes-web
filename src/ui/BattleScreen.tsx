@@ -5,19 +5,24 @@ import {
   approachTiles,
   BATTLE_H,
   BATTLE_W,
+  canCastThisRound,
   canShoot,
   chebyshev,
   doAttack,
+  doCastSpell,
   doDefend,
   doMove,
   doShoot,
   doWait,
+  getSideMagic,
   isBattleOver,
+  isValidSpellTarget,
   previewDamage,
   reachable,
   stackTotalHp,
   stepBattleAI,
 } from "../game/battle/engine";
+import { getSpell } from "../game/data/spells";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { BattleStack, BattleState, Coord } from "../game/types";
@@ -36,6 +41,9 @@ export function BattleScreen() {
   const logRef = useRef<HTMLDivElement>(null);
   const [hoverCell, setHoverCell] = useState<Coord | null>(null);
   const [hoverClient, setHoverClient] = useState<{ x: number; y: number } | null>(null);
+  // Открытая модалка спеллбука и режим выбора цели для заклинания.
+  const [showSpells, setShowSpells] = useState(false);
+  const [castSpellId, setCastSpellId] = useState<string | null>(null);
 
   // Когда бой заканчивается — закрываем экран через действие store.
   useEffect(() => {
@@ -93,6 +101,18 @@ export function BattleScreen() {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [battle?.log]);
 
+  // ESC отменяет режим выбора цели для заклинания, чтобы не «зависнуть» в нём.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setCastSpellId(null);
+        setShowSpells(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (!battle) return null;
   const act = activeStack(battle);
   const winner = isBattleOver(battle);
@@ -110,6 +130,15 @@ export function BattleScreen() {
       if (!battle.defenderHeroId) return;
       const def = heroes[battle.defenderHeroId];
       if (players[def.ownerId]?.isHuman === false) return;
+    }
+    // Режим выбора цели заклинания: клик по подходящему стеку — каст, по любому другому — отмена.
+    if (castSpellId) {
+      const clickedStack = battle.stacks.find(s => s.count > 0 && s.pos.x === x && s.pos.y === y);
+      if (clickedStack && isValidSpellTarget(battle, act.side, castSpellId, clickedStack.id)) {
+        useGame.setState({ battle: doCastSpell(battle, act.side, castSpellId, clickedStack.id) });
+      }
+      setCastSpellId(null);
+      return;
     }
     // Цель — враг?
     const target = battle.stacks.find(s => s.pos.x === x && s.pos.y === y && s.count > 0 && s.side !== act.side);
@@ -182,9 +211,33 @@ export function BattleScreen() {
             <div style={{ fontSize: 14 }}>
               <span style={{ color: act.side === "attacker" ? "#5fa850" : "#c44030" }}>●</span> Раунд {battle.round}:
               ход {UNITS[act.unitId].name} ({act.count})
+              {(() => {
+                const m = getSideMagic(battle, act.side);
+                if (m.spells.length === 0) return null;
+                return (
+                  <span style={{ marginLeft: 12, color: "var(--text-dim)" }}>
+                    💧 {m.mana} · 🔮 {m.spellPower}
+                  </span>
+                );
+              })()}
             </div>
             <button onClick={() => useGame.setState({ battle: doWait(battle, act.id) })}>Ждать (W)</button>
             <button onClick={() => useGame.setState({ battle: doDefend(battle, act.id) })}>Защита (D)</button>
+            {(() => {
+              const m = getSideMagic(battle, act.side);
+              const canCast = m.spells.length > 0 && canCastThisRound(battle, act.side);
+              if (m.spells.length === 0) return null;
+              return (
+                <button
+                  disabled={!canCast}
+                  onClick={() => setShowSpells(true)}
+                  title={canCast ? "Открыть спеллбук" : "В этом раунде уже кастовали"}
+                >
+                  📖 Заклинание
+                </button>
+              );
+            })()}
+            {castSpellId && <span style={{ color: "var(--accent)", fontSize: 12 }}>Выберите цель… (ESC — отмена)</span>}
             <div style={{ marginLeft: "auto" }}>
               <button
                 onClick={() => {
@@ -208,6 +261,77 @@ export function BattleScreen() {
           {battle.log.map((l, i) => (
             <div key={i}>{l}</div>
           ))}
+        </div>
+      </div>
+      {showSpells && act && (
+        <SpellbookModal
+          battle={battle}
+          side={act.side}
+          onClose={() => setShowSpells(false)}
+          onPick={spellId => {
+            setShowSpells(false);
+            setCastSpellId(spellId);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SpellbookModal({
+  battle,
+  side,
+  onClose,
+  onPick,
+}: {
+  battle: BattleState;
+  side: "attacker" | "defender";
+  onClose: () => void;
+  onPick: (spellId: string) => void;
+}) {
+  const magic = getSideMagic(battle, side);
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 460 }}>
+        <h2 style={{ marginTop: 0, color: "var(--gold)" }}>📖 Книга заклинаний</h2>
+        <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 8 }}>
+          💧 Мана: {magic.mana} · 🔮 Сила: {magic.spellPower}. 1 каст в раунд.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
+          {magic.spells.map(id => {
+            const sp = getSpell(id);
+            if (!sp) return null;
+            const affordable = magic.mana >= sp.manaCost;
+            return (
+              <button
+                key={id}
+                disabled={!affordable}
+                onClick={() => onPick(id)}
+                title={sp.description}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  gap: 2,
+                  padding: 8,
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ fontSize: 18 }}>
+                  {sp.icon} {sp.name}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
+                  ур. {sp.level} · 💧 {sp.manaCost}
+                </span>
+                <span style={{ fontSize: 11 }}>{sp.description}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <button onClick={onClose} style={{ flex: 1 }}>
+            Закрыть
+          </button>
         </div>
       </div>
     </div>

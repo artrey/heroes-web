@@ -3,11 +3,12 @@ import { persist } from "zustand/middleware";
 
 import { isBattleOver, startBattle, stepBattleAI } from "./battle/engine";
 import { ARTIFACTS, getArtifact } from "./data/artifacts";
-import { FACTION_BUILDINGS, getBuilding } from "./data/buildings";
+import { FACTION_BUILDINGS, getBuilding, MAGE_GUILD_LEVEL } from "./data/buildings";
 import { getPreset } from "./data/difficulty";
 import { FACTION_LIST, FACTION_META } from "./data/factions";
 import { getHeroProto, pickHeroProto } from "./data/heroes";
 import { reverseRate } from "./data/marketRates";
+import { spellsUpToLevel } from "./data/spells";
 import { FACTION_UNIT_ORDER, getUnit, UNITS } from "./data/units";
 import { generateMap } from "./map/generate";
 import type {
@@ -196,6 +197,8 @@ export const useGame = create<GameState & Actions>()(
             garrison: [],
             availableUnits: { [`${FACTION_UNIT_ORDER[start.faction][0]}`]: 0 },
             hasFort: false,
+            mageGuildLevel: 0,
+            learnedSpells: [],
           };
           towns[tid] = town;
           // Положим объект-города на карту.
@@ -232,6 +235,11 @@ export const useGame = create<GameState & Actions>()(
             level: 1,
             xp: 0,
             statBonus: { attack: 0, defense: 0 },
+            spellPower: 1,
+            knowledge: 1,
+            mana: 10,
+            maxMana: 10,
+            spells: [],
             icon: proto.icon,
           };
           heroes[hid] = hero;
@@ -514,9 +522,25 @@ export const useGame = create<GameState & Actions>()(
           const unit = UNITS[def.produces];
           newTown.availableUnits[def.produces] = (newTown.availableUnits[def.produces] ?? 0) + unit.growth;
         }
+        // Если это очередной уровень гильдии магов — открываем все заклинания этого уровня и ниже.
+        const guildLevel = MAGE_GUILD_LEVEL[buildingId];
+        if (guildLevel) {
+          newTown.mageGuildLevel = guildLevel;
+          newTown.learnedSpells = spellsUpToLevel(guildLevel);
+        }
+        // Если в этом городе стоит герой и мы построили гильдию магов — он сразу учит заклинания.
+        let newHeroes = s.heroes;
+        if (guildLevel) {
+          const heroHere = Object.values(s.heroes).find(h => h.pos.x === town.pos.x && h.pos.y === town.pos.y);
+          if (heroHere && heroHere.ownerId === town.ownerId) {
+            const updated = applyMageGuildVisit(heroHere, newTown);
+            if (updated !== heroHere) newHeroes = { ...s.heroes, [heroHere.id]: updated };
+          }
+        }
         set({
           towns: { ...s.towns, [townId]: newTown },
           players: { ...s.players, [player.id]: newPlayer },
+          heroes: newHeroes,
           log: [...s.log, logLine(s.day, `Построено: ${def.name}`)],
         });
         return true;
@@ -570,7 +594,7 @@ export const useGame = create<GameState & Actions>()(
           unitId: stack.unitId,
           count: randInt(rng, stack.min, stack.max),
         }));
-        const hero: Hero = {
+        let hero: Hero = {
           id: hid,
           ownerId: town.ownerId,
           name: proto.name,
@@ -583,8 +607,15 @@ export const useGame = create<GameState & Actions>()(
           level: 1,
           xp: 0,
           statBonus: { attack: 0, defense: 0 },
+          spellPower: 1,
+          knowledge: 1,
+          mana: 10,
+          maxMana: 10,
+          spells: [],
           icon: proto.icon,
         };
+        // Если в городе есть гильдия магов — нанятый герой сразу учит её заклинания.
+        hero = applyMageGuildVisit(hero, town);
 
         const withHero: Player = {
           ...player,
@@ -890,6 +921,8 @@ export const useGame = create<GameState & Actions>()(
             xp: newXp,
             level: newLevel,
             statBonus: newStatBonus,
+            // Перенесём остаточную ману из боя обратно герою.
+            mana: Math.max(0, Math.min(attacker.maxMana, b.attackerMagic.mana)),
           },
         };
 
@@ -978,12 +1011,45 @@ export const useGame = create<GameState & Actions>()(
       name: "heroes-web-save",
       // v6 — baseline после релиза. С этой точки любое изменение формата
       // ОБЯЗАНО сопровождаться миграцией в migrate() ниже, а не просто бампом version.
-      version: 6,
+      version: 7,
       migrate: (persisted, fromVersion) => {
         const state = persisted as Partial<GameState>;
         // Сейвы версий < 6 — времён до релиза, формат менялся свободно. Их не мигрируем,
         // вернём пустое состояние, чтобы persist подставил initialState.
         if (fromVersion < 6) return undefined;
+        if (fromVersion < 7) {
+          // v7: магия. Героям проставляем дефолтные spellPower/knowledge/mana/spells.
+          // Городам — нулевой уровень гильдии и пустой список заклинаний.
+          // Активный бой при таком изменении формата не восстанавливаем — формат BattleState
+          // тоже изменился (магия, tempBonus).
+          if (state.heroes) {
+            const newHeroes: Record<string, Hero> = {};
+            for (const [id, h] of Object.entries(state.heroes)) {
+              newHeroes[id] = {
+                ...h,
+                spellPower: (h as Partial<Hero>).spellPower ?? 1,
+                knowledge: (h as Partial<Hero>).knowledge ?? 1,
+                mana: (h as Partial<Hero>).mana ?? 10,
+                maxMana: (h as Partial<Hero>).maxMana ?? 10,
+                spells: (h as Partial<Hero>).spells ?? [],
+              } as Hero;
+            }
+            state.heroes = newHeroes;
+          }
+          if (state.towns) {
+            const newTowns: Record<string, Town> = {};
+            for (const [id, t] of Object.entries(state.towns)) {
+              newTowns[id] = {
+                ...t,
+                mageGuildLevel: (t as Partial<Town>).mageGuildLevel ?? 0,
+                learnedSpells: (t as Partial<Town>).learnedSpells ?? [],
+              } as Town;
+            }
+            state.towns = newTowns;
+          }
+          state.battle = null;
+          if (state.phase === "battle") state.phase = "adventure";
+        }
         // Сюда добавляются ветки `if (fromVersion < N) { ... }` для каждой будущей версии.
         return state as GameState;
       },
@@ -992,6 +1058,18 @@ export const useGame = create<GameState & Actions>()(
 );
 
 // =================== ВСПОМОГАТЕЛЬНОЕ ===================
+
+// Применить эффект гильдии магов: герой учит все доступные в городе заклинания
+// и восстанавливает ману. Используется при заходе героя в свой город и при найме.
+function applyMageGuildVisit(hero: Hero, town: Town): Hero {
+  if (town.learnedSpells.length === 0) return hero;
+  const before = new Set(hero.spells);
+  const next = new Set(hero.spells);
+  for (const s of town.learnedSpells) next.add(s);
+  const learnedSomething = next.size !== before.size;
+  if (!learnedSomething && hero.mana >= hero.maxMana) return hero;
+  return { ...hero, spells: [...next], mana: hero.maxMana };
+}
 
 function addToArmy(army: UnitStack[], unitId: string, count: number): UnitStack[] {
   const out = army.map(s => ({ ...s }));
@@ -1216,7 +1294,14 @@ function interactWithObject(objId: string, heroId?: string) {
     const town = s.towns[obj.id];
     if (!town) return;
     if (town.ownerId === s.activePlayerId) {
-      // Свой город — открыть UI только если за игрока-человека.
+      // Свой город — если герой стоит в нём и есть гильдия, учим заклинания и поим ману.
+      if (hero) {
+        const updated = applyMageGuildVisit(hero, town);
+        if (updated !== hero) {
+          useGame.setState({ heroes: { ...s.heroes, [hero.id]: updated } });
+        }
+      }
+      // Открыть UI только если за игрока-человека.
       if (s.players[s.activePlayerId]?.isHuman) {
         useGame.setState({ phase: "town", selectedTownId: town.id });
       }

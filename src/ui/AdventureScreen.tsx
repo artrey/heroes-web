@@ -469,11 +469,16 @@ function HeroStatsLine({ hero }: { hero: Hero }) {
   const bonus = getHeroBonus(hero);
   return (
     <div
-      style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4, display: "flex", gap: 10 }}
-      title="Атака и защита героя (уровни + артефакты)"
+      style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap" }}
+      title="Атака / Защита / Сила магии / Знания · Мана"
     >
       <span>⚔️ {bonus.attack}</span>
       <span>🛡️ {bonus.defense}</span>
+      <span>🔮 {hero.spellPower}</span>
+      <span>📚 {hero.knowledge}</span>
+      <span>
+        💧 {hero.mana}/{hero.maxMana}
+      </span>
     </div>
   );
 }

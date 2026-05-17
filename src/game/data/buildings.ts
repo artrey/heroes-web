@@ -52,7 +52,38 @@ const baseBuildings: BuildingDef[] = [
     cost: { gold: 500, wood: 5 },
     icon: "🏪",
   },
+  {
+    id: "mageGuild1",
+    name: "Гильдия магов I",
+    description: "Открывает заклинания 1-го уровня. Герой в городе изучает все доступные.",
+    cost: { gold: 2000, wood: 5, ore: 5 },
+    prereq: ["villageHall"],
+    icon: "📖",
+  },
+  {
+    id: "mageGuild2",
+    name: "Гильдия магов II",
+    description: "Открывает заклинания 2-го уровня.",
+    cost: { gold: 1000, mercury: 4, sulfur: 4, crystal: 4, gems: 4 },
+    prereq: ["mageGuild1"],
+    icon: "📖",
+  },
+  {
+    id: "mageGuild3",
+    name: "Гильдия магов III",
+    description: "Открывает заклинания 3-го уровня.",
+    cost: { gold: 1500, mercury: 6, sulfur: 6, crystal: 6, gems: 6 },
+    prereq: ["mageGuild2"],
+    icon: "📖",
+  },
 ];
+
+// id → уровень гильдии магов. Используется при постройке для заполнения learnedSpells.
+export const MAGE_GUILD_LEVEL: Record<string, number> = {
+  mageGuild1: 1,
+  mageGuild2: 2,
+  mageGuild3: 3,
+};
 
 const castleBuildings: BuildingDef[] = [
   {

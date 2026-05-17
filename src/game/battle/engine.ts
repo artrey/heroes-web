@@ -1,6 +1,17 @@
 import { EMPTY_BONUS } from "../data/artifacts";
+import { getSpell } from "../data/spells";
 import { getUnit, UNITS } from "../data/units";
-import type { BattleObstacle, BattleStack, BattleState, Coord, Hero, HeroBonus, UnitStack } from "../types";
+import type {
+  BattleMagic,
+  BattleObstacle,
+  BattleStack,
+  BattleState,
+  Coord,
+  Hero,
+  HeroBonus,
+  StackTempBonus,
+  UnitStack,
+} from "../types";
 import { getHeroBonus } from "../utils/heroBonus";
 import { makeId } from "../utils/id";
 
@@ -16,6 +27,27 @@ interface StartArgs {
   // Дополнительные бонусы для сторон — например, буф ИИ на высокой сложности.
   attackerExtraBonus?: Partial<HeroBonus>;
   defenderExtraBonus?: Partial<HeroBonus>;
+}
+
+const EMPTY_TEMP: StackTempBonus = { attack: 0, defense: 0, speed: 0, minDmg: 0 };
+
+const EMPTY_MAGIC: BattleMagic = {
+  mana: 0,
+  spellPower: 0,
+  knowledge: 0,
+  spells: [],
+  lastCastRound: 0,
+};
+
+function magicFromHero(h: Hero | null): BattleMagic {
+  if (!h) return { ...EMPTY_MAGIC };
+  return {
+    mana: h.mana,
+    spellPower: h.spellPower,
+    knowledge: h.knowledge,
+    spells: [...h.spells],
+    lastCastRound: 0,
+  };
 }
 
 export function startBattle(args: StartArgs): BattleState {
@@ -40,6 +72,7 @@ export function startBattle(args: StartArgs): BattleState {
       hasActed: false,
       hasRetaliated: false,
       shots: def.shots ?? 0,
+      tempBonus: { ...EMPTY_TEMP },
     });
   });
 
@@ -58,6 +91,7 @@ export function startBattle(args: StartArgs): BattleState {
       hasActed: false,
       hasRetaliated: false,
       shots: def.shots ?? 0,
+      tempBonus: { ...EMPTY_TEMP },
     });
   });
 
@@ -72,6 +106,8 @@ export function startBattle(args: StartArgs): BattleState {
     defenderArmy: args.defenderArmy,
     attackerBonus,
     defenderBonus,
+    attackerMagic: magicFromHero(args.attackerHero),
+    defenderMagic: magicFromHero(args.defenderHero),
     xpReward,
     obstacles,
     stacks,
@@ -135,10 +171,11 @@ function mergeBonus(base: HeroBonus, extra?: Partial<HeroBonus>): HeroBonus {
 
 function effectiveStats(stack: BattleStack, bonus: HeroBonus) {
   const def = UNITS[stack.unitId];
+  const t = stack.tempBonus;
   return {
-    attack: def.attack + bonus.attack,
-    defense: def.defense + bonus.defense,
-    speed: def.speed + bonus.speed,
+    attack: def.attack + bonus.attack + t.attack,
+    defense: def.defense + bonus.defense + t.defense,
+    speed: def.speed + bonus.speed + t.speed,
     hp: def.hp + bonus.hpBonus,
   };
 }
@@ -157,7 +194,7 @@ function computeTurnOrder(
     .filter(s => s.count > 0)
     .map(s => {
       const bonus = s.side === "attacker" ? bonuses.attackerBonus : bonuses.defenderBonus;
-      const speed = UNITS[s.unitId].speed + bonus.speed;
+      const speed = UNITS[s.unitId].speed + bonus.speed + s.tempBonus.speed;
       return { s, ini: UNITS[s.unitId].initiative + speed * 0.01 };
     })
     .sort((a, b) => b.ini - a.ini)
@@ -275,16 +312,18 @@ function rollDamage(
   ranged: boolean,
 ): { dmg: number; killed: number; remainingHp: number; newCount: number } {
   const aDef = UNITS[attacker.unitId];
+  const minD = aDef.minDmg + attacker.tempBonus.minDmg;
+  const maxD = aDef.maxDmg + attacker.tempBonus.minDmg;
   // Бросок урона на каждый юнит в стеке — как в HoMM3.
   // При minDmg === maxDmg рандом пропускаем (оптимизация для больших стеков).
-  const spread = aDef.maxDmg - aDef.minDmg;
+  const spread = maxD - minD;
   let raw: number;
   if (spread === 0) {
-    raw = aDef.minDmg * attacker.count;
+    raw = minD * attacker.count;
   } else {
     raw = 0;
     for (let i = 0; i < attacker.count; i++) {
-      raw += aDef.minDmg + Math.floor(Math.random() * (spread + 1));
+      raw += minD + Math.floor(Math.random() * (spread + 1));
     }
   }
   const totalDmg = applyDmgModifiers(b, attacker, defender, ranged, raw);
@@ -334,8 +373,8 @@ export function previewDamage(
   if (!attacker || !defender || attacker.count <= 0 || defender.count <= 0) return null;
   const aDef = UNITS[attacker.unitId];
   const ranged = canShoot(b, attacker);
-  const minRaw = aDef.minDmg * attacker.count;
-  const maxRaw = aDef.maxDmg * attacker.count;
+  const minRaw = (aDef.minDmg + attacker.tempBonus.minDmg) * attacker.count;
+  const maxRaw = (aDef.maxDmg + attacker.tempBonus.minDmg) * attacker.count;
   const minDmg = applyDmgModifiers(b, attacker, defender, ranged, minRaw);
   const maxDmg = applyDmgModifiers(b, attacker, defender, ranged, maxRaw);
   const lo = applyDamageToStack(b, defender, minDmg); // меньше урона — больше выживших
@@ -441,6 +480,102 @@ function finalizeTurn(b: BattleState, justActedId: string): BattleState {
   return { ...b, stacks: newStacks, turnOrder: newOrder, activeStackIdx: 0, round: b.round + 1 };
 }
 
+// =================== ЗАКЛИНАНИЯ ===================
+
+export function getSideMagic(b: BattleState, side: "attacker" | "defender"): BattleMagic {
+  return side === "attacker" ? b.attackerMagic : b.defenderMagic;
+}
+
+// Может ли сторона кастовать прямо сейчас: есть ли вообще магия, не использовали ли в этом раунде.
+export function canCastThisRound(b: BattleState, side: "attacker" | "defender"): boolean {
+  const m = getSideMagic(b, side);
+  if (m.spells.length === 0) return false;
+  return m.lastCastRound !== b.round;
+}
+
+// Возможна ли цель для заклинания (по принадлежности к стороне).
+export function isValidSpellTarget(
+  b: BattleState,
+  casterSide: "attacker" | "defender",
+  spellId: string,
+  targetId: string,
+): boolean {
+  const sp = getSpell(spellId);
+  if (!sp) return false;
+  const t = b.stacks.find(s => s.id === targetId);
+  if (!t || t.count <= 0) return false;
+  if (sp.target === "enemy") return t.side !== casterSide;
+  if (sp.target === "ally") return t.side === casterSide;
+  return true;
+}
+
+export function doCastSpell(
+  b: BattleState,
+  casterSide: "attacker" | "defender",
+  spellId: string,
+  targetStackId: string,
+): BattleState {
+  const sp = getSpell(spellId);
+  if (!sp) return b;
+  if (!canCastThisRound(b, casterSide)) return b;
+  const magic = getSideMagic(b, casterSide);
+  if (!magic.spells.includes(spellId)) return b;
+  if (magic.mana < sp.manaCost) return b;
+  if (!isValidSpellTarget(b, casterSide, spellId, targetStackId)) return b;
+
+  const newB: BattleState = {
+    ...b,
+    stacks: b.stacks.map(s => ({ ...s, pos: { ...s.pos }, tempBonus: { ...s.tempBonus } })),
+    log: b.log.slice(),
+    attackerMagic: { ...b.attackerMagic, spells: [...b.attackerMagic.spells] },
+    defenderMagic: { ...b.defenderMagic, spells: [...b.defenderMagic.spells] },
+  };
+  const newMagic = casterSide === "attacker" ? newB.attackerMagic : newB.defenderMagic;
+  newMagic.mana -= sp.manaCost;
+  newMagic.lastCastRound = newB.round;
+
+  const target = newB.stacks.find(s => s.id === targetStackId)!;
+  if (sp.effect === "damage") {
+    const raw = sp.basePower + sp.perPower * magic.spellPower;
+    const res = applyDamageToStack(newB, target, raw);
+    target.count = res.newCount;
+    target.hp = res.remainingHp;
+    newB.log.push(
+      battleLine(
+        newB.round,
+        `${sp.icon} ${sp.name}: ${res.dmg} урона по ${UNITS[target.unitId].name}, убито ${res.killed}`,
+      ),
+    );
+  } else if (sp.effect === "buffAttack") {
+    target.tempBonus.attack += sp.basePower;
+    newB.log.push(
+      battleLine(newB.round, `${sp.icon} ${sp.name}: +${sp.basePower} к атаке (${UNITS[target.unitId].name})`),
+    );
+  } else if (sp.effect === "buffSpeed") {
+    target.tempBonus.speed += sp.basePower;
+    newB.log.push(
+      battleLine(newB.round, `${sp.icon} ${sp.name}: +${sp.basePower} к скорости (${UNITS[target.unitId].name})`),
+    );
+  } else if (sp.effect === "debuffSpeed") {
+    target.tempBonus.speed -= sp.basePower;
+    newB.log.push(
+      battleLine(newB.round, `${sp.icon} ${sp.name}: −${sp.basePower} к скорости (${UNITS[target.unitId].name})`),
+    );
+  }
+
+  // Эффекты на скорость могут влиять на дальнейший порядок ходов — пересчитаем
+  // turnOrder, но только для ещё не сходивших стеков (текущему стеку очередь сохраняем).
+  newB.turnOrder = computeTurnOrder(newB.stacks, {
+    attackerBonus: newB.attackerBonus,
+    defenderBonus: newB.defenderBonus,
+  });
+  // Восстановить корректный activeStackIdx по id текущего активного.
+  const actId = b.turnOrder[b.activeStackIdx];
+  const newIdx = newB.turnOrder.indexOf(actId);
+  if (newIdx >= 0) newB.activeStackIdx = newIdx;
+  return newB;
+}
+
 // Адъяцентные пустые клетки рядом с defender, отсортированные по расстоянию до attacker.
 export function approachTiles(b: BattleState, attackerId: string, defenderId: string): Coord[] {
   const attacker = b.stacks.find(s => s.id === attackerId);
@@ -463,12 +598,44 @@ export function approachTiles(b: BattleState, attackerId: string, defenderId: st
   return candidates.sort((a, b) => chebyshev(a, attacker.pos) - chebyshev(b, attacker.pos));
 }
 
+// Простой ИИ-кастер: если сторона активного стека ещё не кастовала, есть мана и
+// заклинания, выбирает первое атакующее заклинание, которое потянет, и кастует
+// на самого живучего врага. Если есть только баффы — кастует на самый сильный свой стек.
+function aiCastIfPossible(b: BattleState, side: "attacker" | "defender"): BattleState | null {
+  if (!canCastThisRound(b, side)) return null;
+  const magic = getSideMagic(b, side);
+  const spells = magic.spells.map(getSpell).filter((s): s is NonNullable<ReturnType<typeof getSpell>> => !!s);
+  // Атакующее заклинание — приоритет.
+  const dmgSpell = spells
+    .filter(s => s.effect === "damage" && s.manaCost <= magic.mana)
+    .sort((a, b) => b.basePower + b.perPower - (a.basePower + a.perPower))[0];
+  if (dmgSpell) {
+    const enemies = b.stacks.filter(s => s.side !== side && s.count > 0);
+    if (enemies.length === 0) return null;
+    const target = enemies.slice().sort((a, b) => b.count * UNITS[b.unitId].hp - a.count * UNITS[a.unitId].hp)[0];
+    return doCastSpell(b, side, dmgSpell.id, target.id);
+  }
+  // Иначе — буф на самый сильный свой стек.
+  const buff = spells
+    .filter(s => s.effect === "buffAttack" || s.effect === "buffSpeed")
+    .find(s => s.manaCost <= magic.mana);
+  if (buff) {
+    const allies = b.stacks.filter(s => s.side === side && s.count > 0);
+    const target = allies.slice().sort((a, b) => b.count * UNITS[b.unitId].hp - a.count * UNITS[a.unitId].hp)[0];
+    if (target) return doCastSpell(b, side, buff.id, target.id);
+  }
+  return null;
+}
+
 // ИИ боя: один ход активного стека. Используется и для нейтрального противника, и для ИИ-игрока.
 export function stepBattleAI(b: BattleState): { battle: BattleState } {
   const act = activeStack(b);
   if (!act) return { battle: b };
   const enemies = b.stacks.filter(s => s.side !== act.side && s.count > 0);
   if (enemies.length === 0) return { battle: b };
+  // Сначала попробуем сколдовать заклинание — каст не расходует ход стека.
+  const afterCast = aiCastIfPossible(b, act.side);
+  if (afterCast) return { battle: afterCast };
   // Если можно стрелять — стрелять по самому слабому.
   if (canShoot(b, act)) {
     const target = enemies.slice().sort((a, b) => a.count * UNITS[a.unitId].hp - b.count * UNITS[b.unitId].hp)[0];

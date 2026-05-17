@@ -90,6 +90,12 @@ export interface Hero {
   level: number;
   xp: number;
   statBonus: { attack: number; defense: number };
+  // Магические параметры. maxMana = knowledge * 10, восстанавливается в гильдии магов / в начале боя нет.
+  spellPower: number;
+  knowledge: number;
+  mana: number;
+  maxMana: number;
+  spells: string[]; // id выученных заклинаний
   icon: string;
 }
 
@@ -114,6 +120,11 @@ export interface Town {
   garrison: UnitStack[]; // до 7 слотов
   availableUnits: Record<string, number>; // unitId -> сколько доступно к найму
   hasFort: boolean;
+  // Уровень построенной гильдии магов (0 = нет; 1..3 = соответствующий уровень).
+  mageGuildLevel: number;
+  // Заклинания, доступные к изучению в этом городе. Заполняется при постройке очередного
+  // уровня гильдии магов — обычно все заклинания текущего и предыдущих уровней.
+  learnedSpells: string[];
 }
 
 export type ObjectKind =
@@ -181,6 +192,14 @@ export const VISION_RADIUS_TOWN = 6;
 
 export type Phase = "menu" | "newGame" | "adventure" | "town" | "battle" | "heroMeeting" | "hero" | "gameOver";
 
+// Временный бонус от заклинаний/баффов, действующий до конца боя.
+export interface StackTempBonus {
+  attack: number;
+  defense: number;
+  speed: number;
+  minDmg: number; // прибавка к минимальному и максимальному урону на юнит
+}
+
 export interface BattleStack {
   id: string;
   unitId: string;
@@ -191,11 +210,22 @@ export interface BattleStack {
   hasActed: boolean;
   hasRetaliated: boolean;
   shots: number;
+  tempBonus: StackTempBonus;
 }
 
 export interface BattleObstacle {
   pos: Coord;
   icon: string;
+}
+
+// Магическая «сила сторон» в бою — берётся из соответствующего героя; 0 если героя нет.
+export interface BattleMagic {
+  mana: number;
+  spellPower: number;
+  knowledge: number;
+  spells: string[];
+  // В каком раунде в последний раз кастовали — чтобы разрешить 1 каст в раунд.
+  lastCastRound: number;
 }
 
 export interface BattleState {
@@ -205,6 +235,8 @@ export interface BattleState {
   defenderArmy?: UnitStack[]; // если нет героя
   attackerBonus: HeroBonus;
   defenderBonus: HeroBonus;
+  attackerMagic: BattleMagic;
+  defenderMagic: BattleMagic;
   xpReward: number; // опыт атакеру за победу
   obstacles: BattleObstacle[]; // случайные препятствия на поле — клетки заблокированы
   stacks: BattleStack[];
@@ -213,6 +245,28 @@ export interface BattleState {
   round: number;
   winner: "attacker" | "defender" | null;
   log: string[];
+}
+
+// Заклинания.
+export type SpellSchool = "fire" | "water" | "air" | "earth" | "light";
+export type SpellTargetKind = "enemy" | "ally" | "any";
+export type SpellEffectKind = "damage" | "buffAttack" | "buffSpeed" | "debuffSpeed";
+
+export interface SpellDef {
+  id: string;
+  name: string;
+  icon: string;
+  level: 1 | 2 | 3;
+  school: SpellSchool;
+  target: SpellTargetKind;
+  effect: SpellEffectKind;
+  manaCost: number;
+  // base — фиксированная часть, perPower — добавка за единицу spellPower.
+  // Для урона: суммарный damage = base + perPower * SP.
+  // Для бафа/дебафа speed/attack — на сколько изменить (perPower может быть 0).
+  basePower: number;
+  perPower: number;
+  description: string;
 }
 
 export type Difficulty = "easy" | "normal" | "hard";
