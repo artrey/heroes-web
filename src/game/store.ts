@@ -1,7 +1,18 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { isBattleOver, startBattle, stepBattleAI } from "./battle/engine";
+import { useNet } from "../net/netStore";
+import {
+  doAttack,
+  doCastSpell,
+  doDefend,
+  doMove,
+  doShoot,
+  doWait,
+  isBattleOver,
+  startBattle,
+  stepBattleAI,
+} from "./battle/engine";
 import { ARTIFACTS, getArtifact } from "./data/artifacts";
 import { FACTION_BUILDINGS, getBuilding, MAGE_GUILD_LEVEL } from "./data/buildings";
 import { getPreset } from "./data/difficulty";
@@ -82,6 +93,21 @@ function findHeroSpawnPos(s: GameState, townPos: Coord): Coord | null {
   return null;
 }
 
+// Сетевой гейт для action'ов. В sp/host выполняем функцию обычным путём; в client
+// просто шлём команду хосту и возвращаем undefined (UI пока не дождётся ответа).
+// Это даёт минимальную инвазию в существующий код — оборачиваем каждое сетевое
+// действие при определении.
+function gate<A extends unknown[], R>(name: string, fn: (...args: A) => R): (...args: A) => R | undefined {
+  return (...args: A) => {
+    const net = useNet.getState();
+    if (net.role === "client") {
+      net.client?.send({ type: "action", name, args });
+      return undefined;
+    }
+    return fn(...args);
+  };
+}
+
 const initialState: GameState = {
   phase: "menu",
   day: 1,
@@ -104,25 +130,30 @@ const initialState: GameState = {
   winnerId: null,
 };
 
+// Возврат с | undefined у gate-обёрнутых action'ов нужен из-за сетевого режима:
+// на клиенте действие лишь отправляется хосту и сразу возвращает undefined.
 interface Actions {
   goToMenu: () => void;
   goToNewGame: () => void;
+  goToMultiplayer: () => void;
   startGame: (opts: NewGameOptions) => void;
   selectHero: (id: string | null) => void;
   selectTown: (id: string | null) => void;
-  moveHeroTo: (target: Coord) => "ok" | "blocked" | "noPoints" | "noPath" | "interaction";
+  // heroId опционален: SP читает s.selectedHeroId, MP — клиент явно шлёт свой
+  // выбор, иначе host попытается двигать своего героя.
+  moveHeroTo: (target: Coord, heroId?: string) => "ok" | "blocked" | "noPoints" | "noPath" | "interaction" | undefined;
   endTurn: () => void;
   openTown: (id: string) => void;
   closeTown: () => void;
   openHero: (id: string) => void;
   closeHero: () => void;
-  buildBuilding: (townId: string, buildingId: string) => boolean;
-  hireUnits: (townId: string, unitId: string, count: number) => boolean;
-  hireHero: (townId: string, protoId?: string) => boolean;
-  tradeResource: (townId: string, from: Resource, to: Resource, fromQty: number) => boolean;
+  buildBuilding: (townId: string, buildingId: string) => boolean | undefined;
+  hireUnits: (townId: string, unitId: string, count: number) => boolean | undefined;
+  hireHero: (townId: string, protoId?: string) => boolean | undefined;
+  tradeResource: (townId: string, from: Resource, to: Resource, fromQty: number) => boolean | undefined;
   garrisonToHero: (townId: string, slotIdx: number) => void;
   heroToGarrison: (heroId: string, slotIdx: number) => void;
-  openHeroMeeting: (otherHeroId: string) => boolean;
+  openHeroMeeting: (otherHeroId: string) => boolean | undefined;
   closeHeroMeeting: () => void;
   swapArmySlots: (heroIdA: string, slotA: number, heroIdB: string, slotB: number) => void;
   equipFromBackpack: (heroId: string, backpackIdx: number) => void;
@@ -135,6 +166,16 @@ interface Actions {
   transferAllArmy: (fromHeroId: string, toHeroId: string) => void;
   transferAllArtifacts: (fromHeroId: string, toHeroId: string) => void;
   battleAct: (action: BattleAction) => void;
+  // Прямые действия в бою — заведены отдельными actions, чтобы по сети было
+  // что прокидывать (раньше UI напрямую звал do* из engine и менял setState).
+  battleAttack: (attackerId: string, defenderId: string, approachTo?: Coord) => void;
+  battleShoot: (attackerId: string, defenderId: string) => void;
+  battleMove: (stackId: string, to: Coord) => void;
+  battleWait: (stackId: string) => void;
+  battleDefend: (stackId: string) => void;
+  battleCastSpell: (side: "attacker" | "defender", spellId: string, targetStackId: string) => void;
+  battleStepAi: () => void;
+  battleRunAuto: () => void;
   endBattleVictory: () => void;
   endBattleDefeat: () => void;
   reset: () => void;
@@ -154,13 +195,19 @@ export const useGame = create<GameState & Actions>()(
 
       goToMenu: () => set({ phase: "menu" }),
       goToNewGame: () => set({ phase: "newGame" }),
+      goToMultiplayer: () => set({ phase: "multiplayer" }),
 
       startGame: opts => {
         resetIdCounter();
         const factionRng = mulberry32(opts.seed ^ 0xfeedf00d);
-        const factions: Faction[] = [opts.playerFaction];
-        for (let i = 1; i <= opts.opponentCount; i++) {
-          // Каждому ИИ-противнику — случайная фракция из всех 9.
+        const numHumans = Math.max(1, opts.numHumans ?? 1);
+        // Слоты людей берут фракции из humanFactions (если задано), иначе host —
+        // playerFaction, остальные люди (если есть) — случайные.
+        const factions: Faction[] = [];
+        for (let i = 0; i < numHumans; i++) {
+          factions.push(opts.humanFactions?.[i] ?? (i === 0 ? opts.playerFaction : opts.playerFaction));
+        }
+        for (let i = numHumans; i < 1 + opts.opponentCount; i++) {
           factions.push(FACTION_LIST[Math.floor(factionRng() * FACTION_LIST.length)]);
         }
         const playerCount = 1 + opts.opponentCount;
@@ -186,12 +233,16 @@ export const useGame = create<GameState & Actions>()(
           const pid = makeId("p");
           playerOrder.push(pid);
 
+          // Первые `numHumans` слотов — игроки-люди. В одиночке это 1, в MP — сколько хост задал.
+          const numHumans = Math.max(1, opts.numHumans ?? 1);
+          const isAi = i >= numHumans;
+
           // Город.
           const tid = makeId("t");
           const town: Town = {
             id: tid,
             ownerId: pid,
-            name: i === 0 ? `${opts.playerName} — столица` : `Бастион ${i}`,
+            name: i === 0 ? `${opts.playerName} — столица` : isAi ? `Бастион ${i}` : `Союзник ${i} — столица`,
             faction: start.faction,
             pos: start.townPos,
             built: ["villageHall"],
@@ -218,7 +269,6 @@ export const useGame = create<GameState & Actions>()(
           // Герой.
           const proto = pickHeroProto(start.faction, rng);
           const hid = makeId("h");
-          const isAi = i !== 0;
           const armyMult = isAi ? preset.aiArmyMult : 1;
           const army: UnitStack[] = proto.startingArmy.map(s => ({
             unitId: s.unitId,
@@ -253,10 +303,10 @@ export const useGame = create<GameState & Actions>()(
           const res: ResourceBag = isAi ? { ...preset.aiResources } : { ...preset.playerResources };
           let player: Player = {
             id: pid,
-            name: i === 0 ? opts.playerName : `Противник ${i}`,
+            name: i === 0 ? opts.playerName : isAi ? `Противник ${i}` : `Игрок ${i + 1}`,
             color: PLAYER_COLORS[i],
             faction: start.faction,
-            isHuman: i === 0,
+            isHuman: !isAi,
             defeated: false,
             resources: res,
             heroIds: [hid],
@@ -295,12 +345,13 @@ export const useGame = create<GameState & Actions>()(
         set({ ...initialState });
       },
 
-      selectHero: id => set({ selectedHeroId: id }),
-      selectTown: id => set({ selectedTownId: id }),
+      // Локальные UI-действия — не нужны в сети: у каждого клиента свой выбор/фаза.
+      selectHero: (id: string | null) => set({ selectedHeroId: id }),
+      selectTown: (id: string | null) => set({ selectedTownId: id }),
 
-      moveHeroTo: target => {
+      moveHeroTo: gate("moveHeroTo", (target: Coord, explicitHeroId?: string) => {
         const s = get();
-        const heroId = s.selectedHeroId;
+        const heroId = explicitHeroId ?? s.selectedHeroId;
         if (!heroId || !s.map) return "blocked";
         const hero = s.heroes[heroId];
         if (!hero) return "blocked";
@@ -428,9 +479,9 @@ export const useGame = create<GameState & Actions>()(
         }
         if (newHero.movePoints < STEP_STRAIGHT) return "noPoints";
         return "ok";
-      },
+      }),
 
-      endTurn: () => {
+      endTurn: gate("endTurn", () => {
         const s = get();
         const order = s.playerOrder;
         const curIdx = order.indexOf(s.activePlayerId);
@@ -505,18 +556,20 @@ export const useGame = create<GameState & Actions>()(
         if (alive.length === 1) {
           set({ phase: "gameOver", winnerId: alive[0].id });
         }
-      },
+      }),
 
-      openTown: id => set({ phase: "town", selectedTownId: id }),
+      openTown: (id: string) => set({ phase: "town", selectedTownId: id }),
       closeTown: () => set({ phase: "adventure", selectedTownId: null }),
 
-      openHero: id => set({ phase: "hero", selectedHeroId: id }),
+      openHero: (id: string) => set({ phase: "hero", selectedHeroId: id }),
       closeHero: () => set({ phase: "adventure" }),
 
-      buildBuilding: (townId, buildingId) => {
+      buildBuilding: gate("buildBuilding", (townId: string, buildingId: string) => {
         const s = get();
         const town = s.towns[townId];
         if (!town || town.builtToday) return false;
+        // Строить можно только в свой ход в своём городе.
+        if (town.ownerId !== s.activePlayerId) return false;
         if (town.built.includes(buildingId)) return false;
         const def = getBuilding(town.faction, buildingId);
         if (!def) return false;
@@ -561,12 +614,13 @@ export const useGame = create<GameState & Actions>()(
           log: [...s.log, logLine(s.day, `Построено: ${def.name}`)],
         });
         return true;
-      },
+      }),
 
-      hireUnits: (townId, unitId, count) => {
+      hireUnits: gate("hireUnits", (townId: string, unitId: string, count: number) => {
         const s = get();
         const town = s.towns[townId];
         if (!town) return false;
+        if (town.ownerId !== s.activePlayerId) return false;
         const avail = town.availableUnits[unitId] ?? 0;
         if (avail <= 0 || count <= 0) return false;
         const buy = Math.min(count, avail);
@@ -588,12 +642,13 @@ export const useGame = create<GameState & Actions>()(
           players: { ...s.players, [player.id]: newPlayer },
         });
         return true;
-      },
+      }),
 
-      hireHero: (townId, protoId) => {
+      hireHero: gate("hireHero", (townId: string, protoId?: string) => {
         const s = get();
         const town = s.towns[townId];
         if (!town || !town.ownerId) return false;
+        if (town.ownerId !== s.activePlayerId) return false;
         if (!town.built.includes("tavern")) return false;
         const player = s.players[town.ownerId];
         if (!canAfford(player.resources, HERO_HIRE_COST)) return false;
@@ -650,12 +705,13 @@ export const useGame = create<GameState & Actions>()(
           selectedHeroId: hid,
         });
         return true;
-      },
+      }),
 
-      tradeResource: (townId, from, to, fromQty) => {
+      tradeResource: gate("tradeResource", (townId: string, from: Resource, to: Resource, fromQty: number) => {
         const s = get();
         const town = s.towns[townId];
         if (!town || !town.ownerId) return false;
+        if (town.ownerId !== s.activePlayerId) return false;
         if (!town.built.includes("marketplace")) return false;
         if (fromQty <= 0 || from === to) return false;
         const player = s.players[town.ownerId];
@@ -670,12 +726,13 @@ export const useGame = create<GameState & Actions>()(
           log: [...s.log, logLine(s.day, `Рынок: ${fromQty} ${RESOURCE_NAMES[from]} → ${toQty} ${RESOURCE_NAMES[to]}`)],
         });
         return true;
-      },
+      }),
 
-      garrisonToHero: (townId, slotIdx) => {
+      garrisonToHero: gate("garrisonToHero", (townId: string, slotIdx: number) => {
         const s = get();
         const town = s.towns[townId];
         if (!town) return;
+        if (town.ownerId !== s.activePlayerId) return;
         // Найти героя на этой клетке города.
         const hero = Object.values(s.heroes).find(h => h.pos.x === town.pos.x && h.pos.y === town.pos.y);
         if (!hero) return;
@@ -688,12 +745,13 @@ export const useGame = create<GameState & Actions>()(
           heroes: { ...s.heroes, [hero.id]: { ...hero, army: newHeroArmy } },
           towns: { ...s.towns, [townId]: { ...town, garrison: newGarrison } },
         });
-      },
+      }),
 
-      heroToGarrison: (heroId, slotIdx) => {
+      heroToGarrison: gate("heroToGarrison", (heroId: string, slotIdx: number) => {
         const s = get();
         const hero = s.heroes[heroId];
         if (!hero) return;
+        if (hero.ownerId !== s.activePlayerId) return;
         const tile = s.map?.tiles[hero.pos.y * (s.map?.width ?? 0) + hero.pos.x];
         if (!tile?.objectId) return;
         const town = s.towns[tile.objectId];
@@ -707,9 +765,9 @@ export const useGame = create<GameState & Actions>()(
           heroes: { ...s.heroes, [heroId]: { ...hero, army: newHeroArmy } },
           towns: { ...s.towns, [town.id]: { ...town, garrison: newGarrison } },
         });
-      },
+      }),
 
-      openHeroMeeting: otherHeroId => {
+      openHeroMeeting: (otherHeroId: string) => {
         const s = get();
         const myId = s.selectedHeroId;
         if (!myId || myId === otherHeroId) return false;
@@ -725,12 +783,13 @@ export const useGame = create<GameState & Actions>()(
 
       closeHeroMeeting: () => set({ phase: "adventure", meetingHeroIds: null }),
 
-      swapArmySlots: (heroIdA, slotA, heroIdB, slotB) => {
+      swapArmySlots: gate("swapArmySlots", (heroIdA: string, slotA: number, heroIdB: string, slotB: number) => {
         const s = get();
         const a = s.heroes[heroIdA];
         const b = s.heroes[heroIdB];
         if (!a || !b) return;
         if (a.ownerId !== b.ownerId) return;
+        if (a.ownerId !== s.activePlayerId) return;
         // Один и тот же герой, разные слоты — внутренний swap.
         // Разные герои — swap между армиями (включая мердж одинаковых стеков).
         if (heroIdA === heroIdB) {
@@ -771,12 +830,13 @@ export const useGame = create<GameState & Actions>()(
             [heroIdB]: { ...b, army: newB.filter(Boolean) },
           },
         });
-      },
+      }),
 
-      equipFromBackpack: (heroId, backpackIdx) => {
+      equipFromBackpack: gate("equipFromBackpack", (heroId: string, backpackIdx: number) => {
         const s = get();
         const hero = s.heroes[heroId];
         if (!hero) return;
+        if (hero.ownerId !== s.activePlayerId) return;
         const artId = hero.artifacts.backpack[backpackIdx];
         if (!artId) return;
         const def = ARTIFACTS[artId];
@@ -796,12 +856,13 @@ export const useGame = create<GameState & Actions>()(
             },
           },
         });
-      },
+      }),
 
-      unequipToBackpack: (heroId, slot) => {
+      unequipToBackpack: gate("unequipToBackpack", (heroId: string, slot: ArtifactSlot) => {
         const s = get();
         const hero = s.heroes[heroId];
         if (!hero) return;
+        if (hero.ownerId !== s.activePlayerId) return;
         const artId = hero.artifacts.equipped[slot];
         if (!artId) return;
         const newEquipped = { ...hero.artifacts.equipped };
@@ -815,17 +876,18 @@ export const useGame = create<GameState & Actions>()(
             },
           },
         });
-      },
+      }),
 
       // Передать всю армию из одного героя в другого. Стеки с одинаковым unitId
       // сливаются, новые — кладутся в свободные слоты. Если у получателя нет места,
       // лишние стеки остаются у исходного героя.
-      transferAllArmy: (fromHeroId, toHeroId) => {
+      transferAllArmy: gate("transferAllArmy", (fromHeroId: string, toHeroId: string) => {
         const s = get();
         const from = s.heroes[fromHeroId];
         const to = s.heroes[toHeroId];
         if (!from || !to || fromHeroId === toHeroId) return;
         if (from.ownerId !== to.ownerId) return;
+        if (from.ownerId !== s.activePlayerId) return;
         const toArmy = to.army.map(st => ({ ...st }));
         const remaining: UnitStack[] = [];
         for (const stack of from.army) {
@@ -847,16 +909,17 @@ export const useGame = create<GameState & Actions>()(
             [toHeroId]: { ...to, army: toArmy },
           },
         });
-      },
+      }),
 
       // Передать все артефакты (надетые + рюкзак) другому герою. Получатель кладёт
       // всё себе в рюкзак — пусть решит сам, что надевать.
-      transferAllArtifacts: (fromHeroId, toHeroId) => {
+      transferAllArtifacts: gate("transferAllArtifacts", (fromHeroId: string, toHeroId: string) => {
         const s = get();
         const from = s.heroes[fromHeroId];
         const to = s.heroes[toHeroId];
         if (!from || !to || fromHeroId === toHeroId) return;
         if (from.ownerId !== to.ownerId) return;
+        if (from.ownerId !== s.activePlayerId) return;
         const all: string[] = [];
         for (const slot of ARTIFACT_SLOT_ORDER) {
           const aid = from.artifacts.equipped[slot];
@@ -874,46 +937,104 @@ export const useGame = create<GameState & Actions>()(
             },
           },
         });
-      },
+      }),
 
-      transferArtifact: (fromHeroId, source, toHeroId) => {
-        const s = get();
-        const from = s.heroes[fromHeroId];
-        const to = s.heroes[toHeroId];
-        if (!from || !to || fromHeroId === toHeroId) return;
-        if (from.ownerId !== to.ownerId) return;
-        // Извлечь артефакт из исходной локации.
-        let artId: string | undefined;
-        let newFromArtifacts: HeroArtifacts;
-        if (source.kind === "equipped") {
-          artId = from.artifacts.equipped[source.slot];
-          if (!artId) return;
-          const newEquipped = { ...from.artifacts.equipped };
-          delete newEquipped[source.slot];
-          newFromArtifacts = { equipped: newEquipped, backpack: from.artifacts.backpack };
-        } else {
-          artId = from.artifacts.backpack[source.idx];
-          if (!artId) return;
-          const newBackpack = from.artifacts.backpack.slice();
-          newBackpack.splice(source.idx, 1);
-          newFromArtifacts = { equipped: from.artifacts.equipped, backpack: newBackpack };
-        }
-        // Получатель — всегда в backpack, пусть сам решит надевать или нет.
-        set({
-          heroes: {
-            ...s.heroes,
-            [fromHeroId]: { ...from, artifacts: newFromArtifacts },
-            [toHeroId]: { ...to, artifacts: { ...to.artifacts, backpack: [...to.artifacts.backpack, artId] } },
-          },
-        });
-      },
+      transferArtifact: gate(
+        "transferArtifact",
+        (
+          fromHeroId: string,
+          source: { kind: "equipped"; slot: ArtifactSlot } | { kind: "backpack"; idx: number },
+          toHeroId: string,
+        ) => {
+          const s = get();
+          const from = s.heroes[fromHeroId];
+          const to = s.heroes[toHeroId];
+          if (!from || !to || fromHeroId === toHeroId) return;
+          if (from.ownerId !== to.ownerId) return;
+          if (from.ownerId !== s.activePlayerId) return;
+          // Извлечь артефакт из исходной локации.
+          let artId: string | undefined;
+          let newFromArtifacts: HeroArtifacts;
+          if (source.kind === "equipped") {
+            artId = from.artifacts.equipped[source.slot];
+            if (!artId) return;
+            const newEquipped = { ...from.artifacts.equipped };
+            delete newEquipped[source.slot];
+            newFromArtifacts = { equipped: newEquipped, backpack: from.artifacts.backpack };
+          } else {
+            artId = from.artifacts.backpack[source.idx];
+            if (!artId) return;
+            const newBackpack = from.artifacts.backpack.slice();
+            newBackpack.splice(source.idx, 1);
+            newFromArtifacts = { equipped: from.artifacts.equipped, backpack: newBackpack };
+          }
+          // Получатель — всегда в backpack, пусть сам решит надевать или нет.
+          set({
+            heroes: {
+              ...s.heroes,
+              [fromHeroId]: { ...from, artifacts: newFromArtifacts },
+              [toHeroId]: { ...to, artifacts: { ...to.artifacts, backpack: [...to.artifacts.backpack, artId] } },
+            },
+          });
+        },
+      ),
 
       battleAct: _action => {
         // Заглушка — действия игрока обрабатывает battle/engine.ts через прямой вызов.
         // Это для будущего расширения; сейчас движок не разделяет действия.
       },
 
-      endBattleVictory: () => {
+      battleAttack: gate("battleAttack", (attackerId: string, defenderId: string, approachTo?: Coord) => {
+        const b = get().battle;
+        if (!b) return;
+        set({ battle: doAttack(b, attackerId, defenderId, approachTo) });
+      }),
+      battleShoot: gate("battleShoot", (attackerId: string, defenderId: string) => {
+        const b = get().battle;
+        if (!b) return;
+        set({ battle: doShoot(b, attackerId, defenderId) });
+      }),
+      battleMove: gate("battleMove", (stackId: string, to: Coord) => {
+        const b = get().battle;
+        if (!b) return;
+        set({ battle: doMove(b, stackId, to) });
+      }),
+      battleWait: gate("battleWait", (stackId: string) => {
+        const b = get().battle;
+        if (!b) return;
+        set({ battle: doWait(b, stackId) });
+      }),
+      battleDefend: gate("battleDefend", (stackId: string) => {
+        const b = get().battle;
+        if (!b) return;
+        set({ battle: doDefend(b, stackId) });
+      }),
+      battleCastSpell: gate(
+        "battleCastSpell",
+        (side: "attacker" | "defender", spellId: string, targetStackId: string) => {
+          const b = get().battle;
+          if (!b) return;
+          set({ battle: doCastSpell(b, side, spellId, targetStackId) });
+        },
+      ),
+      battleStepAi: gate("battleStepAi", () => {
+        const b = get().battle;
+        if (!b) return;
+        const { battle: nb } = stepBattleAI(b);
+        set({ battle: nb });
+      }),
+      battleRunAuto: gate("battleRunAuto", () => {
+        let b = get().battle;
+        if (!b) return;
+        let i = 0;
+        while (!isBattleOver(b) && i < 300) {
+          b = stepBattleAI(b).battle;
+          i++;
+        }
+        set({ battle: b });
+      }),
+
+      endBattleVictory: gate("endBattleVictory", () => {
         const s = get();
         const b = s.battle;
         if (!b) return;
@@ -1039,7 +1160,7 @@ export const useGame = create<GameState & Actions>()(
               if (cur.phase !== "adventure") return;
               if (!cur.heroes[pending.heroId]) return;
               useGame.setState({ selectedHeroId: pending.heroId });
-              cur.moveHeroTo(pending.target);
+              cur.moveHeroTo(pending.target, pending.heroId);
             }, 0);
           }
         }
@@ -1048,9 +1169,9 @@ export const useGame = create<GameState & Actions>()(
         if (alive.length === 1) {
           set({ phase: "gameOver", winnerId: alive[0].id });
         }
-      },
+      }),
 
-      endBattleDefeat: () => {
+      endBattleDefeat: gate("endBattleDefeat", () => {
         const s = get();
         const b = s.battle;
         if (!b) return;
@@ -1082,7 +1203,7 @@ export const useGame = create<GameState & Actions>()(
         if (alive.length <= 1) {
           set({ phase: "gameOver", winnerId: alive[0]?.id ?? null });
         }
-      },
+      }),
     }),
     {
       name: "heroes-web-save",

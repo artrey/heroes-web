@@ -12,6 +12,7 @@ import {
   getEffectiveSpellPower,
   getHeroBonus,
 } from "../game/utils/heroBonus";
+import { useMyPlayerId } from "../net/netStore";
 
 type Selected =
   | { kind: "army"; heroId: string; slot: number }
@@ -30,12 +31,18 @@ export function HeroMeetingScreen() {
   const transferAllArmy = useGame(s => s.transferAllArmy);
   const transferAllArtifacts = useGame(s => s.transferAllArtifacts);
   const close = useGame(s => s.closeHeroMeeting);
+  const activePlayerId = useGame(s => s.activePlayerId);
+  const myPlayerId = useMyPlayerId();
+  // Встреча только своих героев в свой ход.
+  const ownerId = a?.ownerId ?? null;
+  const canAct = myPlayerId ? ownerId === myPlayerId && activePlayerId === myPlayerId : ownerId === activePlayerId;
 
   const [selected, setSelected] = useState<Selected>(null);
 
   if (!a || !b) return null;
 
   function clickArmy(hero: Hero, slot: number) {
+    if (!canAct) return;
     if (!selected) {
       if (hero.army[slot]) setSelected({ kind: "army", heroId: hero.id, slot });
       return;
@@ -49,6 +56,7 @@ export function HeroMeetingScreen() {
   }
 
   function clickEquipped(hero: Hero, slot: ArtifactSlot) {
+    if (!canAct) return;
     const occupied = !!hero.artifacts.equipped[slot];
     if (!selected) {
       if (occupied) setSelected({ kind: "equipped", heroId: hero.id, slot });
@@ -80,6 +88,7 @@ export function HeroMeetingScreen() {
   }
 
   function clickBackpack(hero: Hero, idx: number) {
+    if (!canAct) return;
     if (!selected) {
       if (hero.artifacts.backpack[idx]) setSelected({ kind: "backpack", heroId: hero.id, idx });
       return;
@@ -125,30 +134,30 @@ export function HeroMeetingScreen() {
         <div className="meeting-transfer">
           <div className="meeting-transfer-label">Передать всё</div>
           <button
-            disabled={a.army.length === 0}
+            disabled={!canAct || a.army.length === 0}
             onClick={() => transferAllArmy(a.id, b.id)}
-            title="Передать всю армию правому герою"
+            title={canAct ? "Передать всю армию правому герою" : "Не ваш ход"}
           >
             👥 ⇒
           </button>
           <button
-            disabled={b.army.length === 0}
+            disabled={!canAct || b.army.length === 0}
             onClick={() => transferAllArmy(b.id, a.id)}
-            title="Передать всю армию левому герою"
+            title={canAct ? "Передать всю армию левому герою" : "Не ваш ход"}
           >
             ⇐ 👥
           </button>
           <button
-            disabled={Object.keys(a.artifacts.equipped).length === 0 && a.artifacts.backpack.length === 0}
+            disabled={!canAct || (Object.keys(a.artifacts.equipped).length === 0 && a.artifacts.backpack.length === 0)}
             onClick={() => transferAllArtifacts(a.id, b.id)}
-            title="Передать все артефакты правому герою (в рюкзак)"
+            title={canAct ? "Передать все артефакты правому герою (в рюкзак)" : "Не ваш ход"}
           >
             💼 ⇒
           </button>
           <button
-            disabled={Object.keys(b.artifacts.equipped).length === 0 && b.artifacts.backpack.length === 0}
+            disabled={!canAct || (Object.keys(b.artifacts.equipped).length === 0 && b.artifacts.backpack.length === 0)}
             onClick={() => transferAllArtifacts(b.id, a.id)}
-            title="Передать все артефакты левому герою (в рюкзак)"
+            title={canAct ? "Передать все артефакты левому герою (в рюкзак)" : "Не ваш ход"}
           >
             ⇐ 💼
           </button>

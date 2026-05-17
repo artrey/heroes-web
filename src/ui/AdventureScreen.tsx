@@ -17,6 +17,7 @@ import { findPath, isPassable, pathCost, stepCost } from "../game/utils/pathfind
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { computeVisibleTiles } from "../game/utils/visibility";
 import { computeDanger } from "../game/utils/zoc";
+import { useNet } from "../net/netStore";
 import { getTerrainBaseColor, getTerrainTile } from "./terrainPatterns";
 
 const TILE_SIZE = 32;
@@ -64,15 +65,33 @@ export function AdventureScreen() {
   const panRef = useRef<{ startX: number; startY: number; camX: number; camY: number } | null>(null);
 
   const activePlayer = players[activePlayerId];
-  // Туман войны рисуем с точки зрения первого игрока-человека, чтобы при ходе ИИ
-  // карта не «перепрыгивала» на чужие тайлы.
-  const humanId = Object.values(players).find(p => p.isHuman)?.id ?? activePlayerId;
+  // В мультиплеере «мой игрок» — это playerId, назначенный хостом. Берём:
+  //   1) net.myPlayerId (приходит в assign);
+  //   2) если пусто — ищем себя в лобби по peerId и читаем playerId оттуда (этот
+  //      путь спасает, когда отдельное assign-сообщение потерялось);
+  //   3) для SP — единственный human.
+  const myPlayerNetId = useNet(s => s.myPlayerId);
+  const myPeerId = useNet(s => s.myPeerId);
+  const lobby = useNet(s => s.lobby);
+  const role = useNet(s => s.role);
+  const fallbackFromLobby = (myPeerId && lobby.find(p => p.peerId === myPeerId)?.playerId) || null;
+  const resolvedMyPlayerId = myPlayerNetId ?? fallbackFromLobby;
+  const myPlayer =
+    role === "sp"
+      ? (Object.values(players).find(p => p.isHuman) ?? activePlayer)
+      : resolvedMyPlayerId
+        ? players[resolvedMyPlayerId]
+        : activePlayer;
+  const isMyTurn = myPlayer ? activePlayer?.id === myPlayer.id : !!activePlayer?.isHuman;
+  // Туман войны рисуем с точки зрения «моего» игрока — иначе на ход соседа
+  // у клиента карта перепрыгивает в чужой обзор.
+  const humanId = myPlayer?.id ?? Object.values(players).find(p => p.isHuman)?.id ?? activePlayerId;
   const humanPlayer = players[humanId];
   const revealed = humanPlayer?.revealed ?? {};
   const income = useMemo(
-    () => (activePlayer ? dailyIncomeFor(useGame.getState(), activePlayer.id) : null),
+    () => (myPlayer ? dailyIncomeFor(useGame.getState(), myPlayer.id) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activePlayer, towns, players],
+    [myPlayer, towns, players],
   );
   const visible = useMemo(
     () => computeVisibleTiles(useGame.getState(), humanId),
@@ -231,7 +250,7 @@ export function AdventureScreen() {
       return;
     }
     const hero = heroes[selectedHeroId];
-    if (!hero || hero.ownerId !== activePlayerId) {
+    if (!hero || hero.ownerId !== myPlayer?.id) {
       setHoverPath(null);
       return;
     }
@@ -254,11 +273,12 @@ export function AdventureScreen() {
     if (!t) return;
     const tile = map!.tiles[t.y * map!.width + t.x];
     const selectedHero = selectedHeroId ? heroes[selectedHeroId] : null;
-    const canMoveSelected = selectedHero && selectedHero.ownerId === activePlayerId;
+    // Двигать можно только своего героя в свой ход.
+    const canMoveSelected = !!(selectedHero && selectedHero.ownerId === myPlayer?.id && isMyTurn);
 
-    // Клик по герою на этой клетке (герои лежат не в map.objects, а в state.heroes).
+    // Клик по герою на этой клетке — выбираем, если он МОЙ (в любой ход — это просто UI).
     const heroHere = Object.values(heroes).find(h => h.pos.x === t.x && h.pos.y === t.y);
-    if (heroHere && heroHere.ownerId === activePlayerId) {
+    if (heroHere && heroHere.ownerId === myPlayer?.id) {
       // Свой союзный герой и выбран другой свой смежный герой — открыть meeting.
       if (selectedHero && selectedHero.id !== heroHere.id) {
         if (useGame.getState().openHeroMeeting(heroHere.id)) return;
@@ -268,23 +288,20 @@ export function AdventureScreen() {
     }
 
     if (tile.objectId) {
-      // Клик по своему городу.
+      // Клик по своему городу — открыть его независимо от того, чей сейчас ход.
       const tw = towns[tile.objectId];
-      if (tw && tw.ownerId === activePlayerId) {
+      if (tw && tw.ownerId === myPlayer?.id) {
         const heroOnTown = selectedHero && selectedHero.pos.x === tw.pos.x && selectedHero.pos.y === tw.pos.y;
-        // Если выбран герой и он ещё не в этом городе — двигаемся к городу;
-        // при входе на клетку UI откроется автоматически из interactWithObject.
         if (canMoveSelected && !heroOnTown) {
-          moveHeroTo(t);
+          if (selectedHeroId) moveHeroTo(t, selectedHeroId);
           return;
         }
-        // Иначе (нет выбранного героя или он уже в городе) — открываем UI напрямую.
         openTown(tw.id);
         return;
       }
     }
     // Любая другая клетка — двигаем выбранного героя.
-    if (canMoveSelected) moveHeroTo(t);
+    if (canMoveSelected && selectedHeroId) moveHeroTo(t, selectedHeroId);
   }
 
   function handleMouseDown(ev: React.MouseEvent) {
@@ -342,8 +359,9 @@ export function AdventureScreen() {
     return () => window.removeEventListener("keydown", onKey);
   }, [map]);
 
-  const playerHeroes = activePlayer ? activePlayer.heroIds.map(id => heroes[id]).filter(Boolean) : [];
-  const playerTowns = activePlayer ? activePlayer.townIds.map(id => towns[id]).filter(Boolean) : [];
+  // Боковая панель — всегда моё (а не активного игрока), даже когда ход чужой.
+  const playerHeroes = myPlayer ? myPlayer.heroIds.map(id => heroes[id]).filter(Boolean) : [];
+  const playerTowns = myPlayer ? myPlayer.townIds.map(id => towns[id]).filter(Boolean) : [];
 
   return (
     <div className="adventure">
@@ -352,14 +370,18 @@ export function AdventureScreen() {
           📅 Месяц {month}, Неделя {((week - 1) % 4) + 1}, День {((day - 1) % 7) + 1}
         </span>
         <span style={{ color: activePlayer?.color }}>● {activePlayer?.name}</span>
-        {activePlayer && !activePlayer.isHuman && <span style={{ color: "var(--accent)" }}>(ход ИИ…)</span>}
+        {activePlayer && !isMyTurn && (
+          <span style={{ color: "var(--accent)" }}>
+            {activePlayer.isHuman ? `(ход: ${activePlayer.name})` : "(ход ИИ…)"}
+          </span>
+        )}
         <div className="res-bar">
-          {(Object.keys(activePlayer?.resources ?? {}) as Array<keyof ResourceBag>).map(k => {
+          {(Object.keys(myPlayer?.resources ?? {}) as Array<keyof ResourceBag>).map(k => {
             const inc = income?.[k] ?? 0;
             return (
               <div className="res-item" key={k} title={`${RESOURCE_NAMES[k]}${inc ? ` · +${inc}/день` : ""}`}>
                 <span>{RESOURCE_ICONS[k]}</span>
-                <span>{activePlayer!.resources[k]}</span>
+                <span>{myPlayer!.resources[k]}</span>
                 {inc > 0 && <span style={{ color: "var(--good)", fontSize: 11, marginLeft: 2 }}>(+{inc})</span>}
               </div>
             );
@@ -462,7 +484,7 @@ export function AdventureScreen() {
           ))}
         </div>
 
-        <button className="end-turn-btn" onClick={() => endTurn()} disabled={!activePlayer?.isHuman}>
+        <button className="end-turn-btn" onClick={() => endTurn()} disabled={!isMyTurn}>
           Завершить ход (↵)
         </button>
       </div>

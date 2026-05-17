@@ -202,7 +202,16 @@ export interface Player {
 export const VISION_RADIUS_HERO = 5;
 export const VISION_RADIUS_TOWN = 6;
 
-export type Phase = "menu" | "newGame" | "adventure" | "town" | "battle" | "heroMeeting" | "hero" | "gameOver";
+export type Phase =
+  | "menu"
+  | "newGame"
+  | "multiplayer"
+  | "adventure"
+  | "town"
+  | "battle"
+  | "heroMeeting"
+  | "hero"
+  | "gameOver";
 
 // Временный бонус от заклинаний/баффов, действующий до конца боя.
 export interface StackTempBonus {
@@ -305,6 +314,13 @@ export interface NewGameOptions {
   playerName: string;
   seed: number;
   difficulty: Difficulty;
+  // Сколько игроков-людей у нас в партии. В одиночке = 1. В MP host задаёт
+  // нужное число; первые `numHumans` слотов считаются «живыми», остальные — ИИ.
+  numHumans?: number;
+  // Фракции человеческих слотов в порядке очерёдности (если задано, перекрывают
+  // playerFaction). Используется host'ом в MP, чтобы каждый из живых игроков
+  // получил свой выбранный город.
+  humanFactions?: Faction[];
 }
 
 export interface GameState {

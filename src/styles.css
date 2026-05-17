@@ -104,6 +104,42 @@ select {
   letter-spacing: 1px;
 }
 
+/* ===== MULTIPLAYER ===== */
+.multiplayer-screen {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 48px 16px;
+}
+.mp-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 24px;
+  width: 100%;
+  max-width: 480px;
+}
+.mp-card h3 {
+  margin: 16px 0 6px;
+}
+.mp-code {
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 14px;
+  word-break: break-all;
+}
+.mp-lobby {
+  margin: 0;
+  padding-left: 18px;
+}
+.mp-lobby li {
+  padding: 2px 0;
+}
+
 /* ===== NEW GAME ===== */
 .new-game {
   flex: 1;

@@ -2,6 +2,7 @@ import { useGame } from "../game/store";
 
 export function MainMenu() {
   const goToNewGame = useGame(s => s.goToNewGame);
+  const goToMultiplayer = useGame(s => s.goToMultiplayer);
   const reset = useGame(s => s.reset);
   const hasSave = useGame(s => s.map !== null);
 
@@ -11,6 +12,7 @@ export function MainMenu() {
       <div className="subtitle">~ браузерный прототип в духе HoMM3 / HotA ~</div>
       <div className="menu-buttons">
         <button onClick={goToNewGame}>Новая игра</button>
+        <button onClick={goToMultiplayer}>🌐 Мультиплеер</button>
         <button disabled={!hasSave} onClick={() => useGame.setState({ phase: "adventure" })}>
           Продолжить
         </button>

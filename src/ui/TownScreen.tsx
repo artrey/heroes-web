@@ -10,6 +10,7 @@ import { useGame } from "../game/store";
 import type { Faction, Resource, ResourceBag } from "../game/types";
 import { dailyIncomeFor } from "../game/utils/income";
 import { canAfford, RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
+import { useMyPlayerId } from "../net/netStore";
 
 const HERO_HIRE_GOLD = 2500;
 
@@ -27,6 +28,13 @@ export function TownScreen() {
   const heroToGarrison = useGame(s => s.heroToGarrison);
 
   const [openModal, setOpenModal] = useState<"tavern" | "marketplace" | "mageGuild" | null>(null);
+  const activePlayerId = useGame(s => s.activePlayerId);
+  const myPlayerId = useMyPlayerId();
+  // canAct: я владелец города И сейчас мой ход. В SP myPlayerId=null — используем
+  // прежнюю эвристику: владелец == активный игрок.
+  const canAct = myPlayerId
+    ? town?.ownerId === myPlayerId && activePlayerId === myPlayerId
+    : town?.ownerId === activePlayerId;
 
   if (!town || !player) return null;
 
@@ -42,7 +50,7 @@ export function TownScreen() {
       else if (MAGE_GUILD_LEVEL[buildingId]) setOpenModal("mageGuild");
       return;
     }
-    if (canBuild) buildBuilding(town!.id, buildingId);
+    if (canBuild && canAct) buildBuilding(town!.id, buildingId);
   }
 
   return (
@@ -93,7 +101,7 @@ export function TownScreen() {
               const built = town.built.includes(b.id);
               const prereqsOk = !b.prereq || b.prereq.every(p => town.built.includes(p));
               const affordable = canAfford(player.resources, b.cost);
-              const canBuild = !built && prereqsOk && affordable && !town.builtToday;
+              const canBuild = !built && prereqsOk && affordable && !town.builtToday && canAct;
               // Здание полностью доступно по prereq + ресурсам, но недоступно только из-за дневного лимита.
               const lockedByDay = !built && prereqsOk && affordable && town.builtToday;
               const cls = built
@@ -194,14 +202,14 @@ export function TownScreen() {
                 </div>
                 <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
                   <button
-                    disabled={avail < 1 || !canBuyOne}
+                    disabled={avail < 1 || !canBuyOne || !canAct}
                     onClick={() => hireUnits(town.id, unitId, 1)}
                     style={{ flex: 1 }}
                   >
                     ×1
                   </button>
                   <button
-                    disabled={avail < 1 || !canBuyOne}
+                    disabled={avail < 1 || !canBuyOne || !canAct}
                     onClick={() => hireUnits(town.id, unitId, avail)}
                     style={{ flex: 1 }}
                   >
@@ -227,9 +235,9 @@ export function TownScreen() {
                 <div
                   key={idx}
                   className="army-slot"
-                  style={{ flex: 1, cursor: heroHere ? "pointer" : "default" }}
-                  onClick={() => heroHere && garrisonToHero(town.id, idx)}
-                  title={heroHere ? "Передать герою" : ""}
+                  style={{ flex: 1, cursor: heroHere && canAct ? "pointer" : "default" }}
+                  onClick={() => heroHere && canAct && garrisonToHero(town.id, idx)}
+                  title={heroHere ? (canAct ? "Передать герою" : "Не ваш ход") : ""}
                 >
                   <span className="icon">{u.icon}</span>
                   <span>{stack.count}</span>
@@ -259,9 +267,9 @@ export function TownScreen() {
                     <div
                       key={idx}
                       className="army-slot"
-                      style={{ flex: 1, cursor: "pointer" }}
-                      onClick={() => heroToGarrison(heroHere.id, idx)}
-                      title="В гарнизон"
+                      style={{ flex: 1, cursor: canAct ? "pointer" : "default" }}
+                      onClick={() => canAct && heroToGarrison(heroHere.id, idx)}
+                      title={canAct ? "В гарнизон" : "Не ваш ход"}
                     >
                       <span className="icon">{u.icon}</span>
                       <span>{stack.count}</span>
@@ -288,7 +296,7 @@ export function TownScreen() {
         <MarketModal
           resources={player.resources}
           onClose={() => setOpenModal(null)}
-          onTrade={(from, to, qty) => tradeResource(town.id, from, to, qty)}
+          onTrade={(from, to, qty) => tradeResource(town.id, from, to, qty) ?? false}
         />
       )}
       {openModal === "mageGuild" && (

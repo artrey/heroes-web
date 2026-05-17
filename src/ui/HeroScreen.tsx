@@ -15,6 +15,7 @@ import {
   getHeroBonus,
 } from "../game/utils/heroBonus";
 import { xpToNextLevel } from "../game/utils/leveling";
+import { useMyPlayerId } from "../net/netStore";
 
 type Selected =
   | { kind: "army"; slot: number }
@@ -29,6 +30,12 @@ export function HeroScreen() {
   const swapArmySlots = useGame(s => s.swapArmySlots);
   const equipFromBackpack = useGame(s => s.equipFromBackpack);
   const unequipToBackpack = useGame(s => s.unequipToBackpack);
+  const activePlayerId = useGame(s => s.activePlayerId);
+  const myPlayerId = useMyPlayerId();
+  // canAct: герой мой и сейчас мой ход. В SP myPlayerId=null — старая эвристика.
+  const canAct = myPlayerId
+    ? hero?.ownerId === myPlayerId && activePlayerId === myPlayerId
+    : hero?.ownerId === activePlayerId;
 
   const [selected, setSelected] = useState<Selected>(null);
 
@@ -40,7 +47,7 @@ export function HeroScreen() {
   const effMaxMana = getEffectiveMaxMana(hero);
 
   function clickArmy(slot: number) {
-    if (!hero) return;
+    if (!hero || !canAct) return;
     if (!selected) {
       if (hero.army[slot]) setSelected({ kind: "army", slot });
       return;
@@ -54,7 +61,7 @@ export function HeroScreen() {
   }
 
   function clickEquipped(slot: ArtifactSlot) {
-    if (!hero) return;
+    if (!hero || !canAct) return;
     if (!selected) {
       if (hero.artifacts.equipped[slot]) setSelected({ kind: "equipped", slot });
       return;
@@ -67,7 +74,7 @@ export function HeroScreen() {
   }
 
   function clickBackpack(idx: number) {
-    if (!hero) return;
+    if (!hero || !canAct) return;
     if (!selected) {
       if (hero.artifacts.backpack[idx]) setSelected({ kind: "backpack", idx });
       return;

@@ -8,12 +8,6 @@ import {
   canCastThisRound,
   canShoot,
   chebyshev,
-  doAttack,
-  doCastSpell,
-  doDefend,
-  doMove,
-  doShoot,
-  doWait,
   getSideMagic,
   isBattleOver,
   isValidSpellTarget,
@@ -21,12 +15,12 @@ import {
   previewSpell,
   reachable,
   stackTotalHp,
-  stepBattleAI,
 } from "../game/battle/engine";
 import { getSpell } from "../game/data/spells";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { BattleStack, BattleState, Coord } from "../game/types";
+import { useNet } from "../net/netStore";
 
 const HEX_W = 56;
 const HEX_H = 48;
@@ -46,9 +40,11 @@ export function BattleScreen() {
   const [showSpells, setShowSpells] = useState(false);
   const [castSpellId, setCastSpellId] = useState<string | null>(null);
 
-  // Когда бой заканчивается — закрываем экран через действие store.
+  // Когда бой заканчивается — закрываем экран через действие store. В MP клиент
+  // ничего не закрывает сам, ждёт state от хоста (иначе летят дубли-сообщений).
   useEffect(() => {
     if (!battle) return;
+    if (useNet.getState().role === "client") return;
     const winner = isBattleOver(battle);
     if (winner) {
       const t = setTimeout(() => {
@@ -82,10 +78,9 @@ export function BattleScreen() {
       isAi = attackerOwner?.isHuman === false;
     }
     if (isAi) {
-      const t = setTimeout(() => {
-        const { battle: b2 } = stepBattleAI(useGame.getState().battle!);
-        useGame.setState({ battle: b2 });
-      }, 500);
+      // ИИ-шаг гоняет только host (или sp). Клиент ждёт state от хоста.
+      if (useNet.getState().role === "client") return;
+      const t = setTimeout(() => useGame.getState().battleStepAi(), 500);
       return () => clearTimeout(t);
     }
   }, [battle, heroes, players, activePlayerId]);
@@ -124,19 +119,23 @@ export function BattleScreen() {
     const x = Math.floor((ev.clientX - rect.left - 20) / HEX_W);
     const y = Math.floor((ev.clientY - rect.top - 20) / HEX_H);
     if (x < 0 || x >= BATTLE_W || y < 0 || y >= BATTLE_H) return;
-    // Если активный — ИИ, не реагируем.
+    // Только владелец активного стека (с учётом MP — мой playerId) ходит вручную.
+    const myPlayerId = useNet.getState().myPlayerId;
     const attackerHero = heroes[battle.attackerHeroId];
-    if (act.side === "attacker" && players[attackerHero.ownerId]?.isHuman === false) return;
-    if (act.side === "defender") {
-      if (!battle.defenderHeroId) return;
-      const def = heroes[battle.defenderHeroId];
-      if (players[def.ownerId]?.isHuman === false) return;
-    }
+    const sideOwner =
+      act.side === "attacker"
+        ? attackerHero && players[attackerHero.ownerId]
+        : battle.defenderHeroId
+          ? players[heroes[battle.defenderHeroId]?.ownerId ?? ""]
+          : null;
+    if (!sideOwner) return; // нейтральный — ИИ ходит сам
+    const canAct = myPlayerId ? sideOwner.id === myPlayerId : !!sideOwner.isHuman;
+    if (!canAct) return;
     // Режим выбора цели заклинания: клик по подходящему стеку — каст, по любому другому — отмена.
     if (castSpellId) {
       const clickedStack = battle.stacks.find(s => s.count > 0 && s.pos.x === x && s.pos.y === y);
       if (clickedStack && isValidSpellTarget(battle, act.side, castSpellId, clickedStack.id)) {
-        useGame.setState({ battle: doCastSpell(battle, act.side, castSpellId, clickedStack.id) });
+        useGame.getState().battleCastSpell(act.side, castSpellId, clickedStack.id);
       }
       setCastSpellId(null);
       return;
@@ -145,24 +144,24 @@ export function BattleScreen() {
     const target = battle.stacks.find(s => s.pos.x === x && s.pos.y === y && s.count > 0 && s.side !== act.side);
     if (target) {
       if (canShoot(battle, act)) {
-        useGame.setState({ battle: doShoot(battle, act.id, target.id) });
+        useGame.getState().battleShoot(act.id, target.id);
         return;
       }
       // Подойти и ударить.
       if (chebyshev(act.pos, target.pos) === 1) {
-        useGame.setState({ battle: doAttack(battle, act.id, target.id) });
+        useGame.getState().battleAttack(act.id, target.id);
         return;
       }
       const approach = approachTiles(battle, act.id, target.id);
       if (approach[0]) {
-        useGame.setState({ battle: doAttack(battle, act.id, target.id, approach[0]) });
+        useGame.getState().battleAttack(act.id, target.id, approach[0]);
       }
       return;
     }
     // Иначе — переместиться.
     const reach = reachable(battle, act);
     if (reach.has(`${x},${y}`)) {
-      useGame.setState({ battle: doMove(battle, act.id, { x, y }) });
+      useGame.getState().battleMove(act.id, { x, y });
     }
   }
 
@@ -232,11 +231,11 @@ export function BattleScreen() {
             <button
               disabled={act.hasWaited}
               title={act.hasWaited ? "Уже ждали в этом раунде" : "Перенести ход в конец раунда"}
-              onClick={() => useGame.setState({ battle: doWait(battle, act.id) })}
+              onClick={() => useGame.getState().battleWait(act.id)}
             >
               Ждать (W)
             </button>
-            <button onClick={() => useGame.setState({ battle: doDefend(battle, act.id) })}>Защита (D)</button>
+            <button onClick={() => useGame.getState().battleDefend(act.id)}>Защита (D)</button>
             {(() => {
               const m = getSideMagic(battle, act.side);
               const canCast = m.spells.length > 0 && canCastThisRound(battle, act.side);
@@ -253,21 +252,7 @@ export function BattleScreen() {
             })()}
             {castSpellId && <span style={{ color: "var(--accent)", fontSize: 12 }}>Выберите цель… (ESC — отмена)</span>}
             <div style={{ marginLeft: "auto" }}>
-              <button
-                onClick={() => {
-                  // Авто-бой: гонять ИИ за обе стороны.
-                  let b = battle;
-                  let i = 0;
-                  while (!isBattleOver(b) && i < 300) {
-                    const { battle: nb } = stepBattleAI(b);
-                    b = nb;
-                    i++;
-                  }
-                  useGame.setState({ battle: b });
-                }}
-              >
-                Автобой
-              </button>
+              <button onClick={() => useGame.getState().battleRunAuto()}>Автобой</button>
             </div>
           </>
         ) : null}
