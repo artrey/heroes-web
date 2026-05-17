@@ -130,17 +130,21 @@ export function HeroScreen() {
               </span>
             </div>
             {(() => {
-              // Разбивка: вклад уровней и вклад экипировки. Считаем gear как
-              // полный бонус минус statBonus — так не нужно отдельно ходить по артефактам.
+              const base = {
+                attack: hero.attack,
+                defense: hero.defense,
+                spellPower: hero.spellPower,
+                knowledge: hero.knowledge,
+              };
               const lvl = hero.statBonus;
               const gear = {
-                attack: bonus.attack - lvl.attack,
-                defense: bonus.defense - lvl.defense,
+                attack: bonus.attack - base.attack - lvl.attack,
+                defense: bonus.defense - base.defense - lvl.defense,
                 speed: bonus.speed,
                 hpBonus: bonus.hpBonus,
                 movement: bonus.movement,
-                spellPower: bonus.spellPower - lvl.spellPower,
-                knowledge: bonus.knowledge - lvl.knowledge,
+                spellPower: bonus.spellPower - base.spellPower - lvl.spellPower,
+                knowledge: bonus.knowledge - base.knowledge - lvl.knowledge,
                 manaMult: bonus.manaMult,
               };
               const hasLvl = lvl.attack + lvl.defense + lvl.spellPower + lvl.knowledge > 0;
@@ -155,6 +159,16 @@ export function HeroScreen() {
                 gear.manaMult;
               return (
                 <>
+                  <div
+                    className="stat-row"
+                    style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}
+                  >
+                    <span style={{ color: "var(--text-dim)" }}>База:</span>
+                  </div>
+                  <BonusRow label="⚔️ Атака" value={`${base.attack}`} />
+                  <BonusRow label="🛡️ Защита" value={`${base.defense}`} />
+                  <BonusRow label="🔮 Сила магии" value={`${base.spellPower}`} />
+                  <BonusRow label="📚 Знания" value={`${base.knowledge}`} />
                   <div
                     className="stat-row"
                     style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}

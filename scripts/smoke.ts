@@ -40,6 +40,8 @@ const attacker: Hero = {
   level: 1,
   xp: 0,
   statBonus: { attack: 0, defense: 0, spellPower: 0, knowledge: 0 },
+  attack: 0,
+  defense: 0,
   spellPower: 1,
   knowledge: 1,
   mana: 10,

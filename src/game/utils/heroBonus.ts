@@ -1,8 +1,9 @@
 import { ARTIFACTS, EMPTY_BONUS } from "../data/artifacts";
 import type { Hero, HeroBonus } from "../types";
 
-// Суммирует бонусы со всех экипированных артефактов героя + прирост за уровни.
-// Backpack не учитывается.
+// Суммирует характеристики героя: базу + прирост от уровней + бонусы со всех
+// экипированных артефактов. Backpack не учитывается. Поля spellPower/knowledge/
+// manaMult оживают только при наличии артефактов — база магии вынесена в hero.*.
 export function getHeroBonus(hero: Hero): HeroBonus {
   const out: HeroBonus = { ...EMPTY_BONUS };
   for (const id of Object.values(hero.artifacts.equipped)) {
@@ -13,6 +14,12 @@ export function getHeroBonus(hero: Hero): HeroBonus {
       out[k] += def.bonus[k] ?? 0;
     }
   }
+  // База героя.
+  out.attack += hero.attack ?? 0;
+  out.defense += hero.defense ?? 0;
+  out.spellPower += hero.spellPower ?? 0;
+  out.knowledge += hero.knowledge ?? 0;
+  // Прирост от уровней.
   out.attack += hero.statBonus?.attack ?? 0;
   out.defense += hero.statBonus?.defense ?? 0;
   out.spellPower += hero.statBonus?.spellPower ?? 0;
@@ -24,17 +31,21 @@ export function getEffectiveMaxMP(hero: Hero): number {
   return hero.maxMovePoints + getHeroBonus(hero).movement;
 }
 
-// Эффективные магические параметры с учётом бонусов от артефактов.
-// statBonus от уровней магию не трогает (уровни дают только +атк/+защ).
+// Эффективные характеристики = суммы из getHeroBonus (база + уровни + артефакты).
+export function getEffectiveAttack(hero: Hero): number {
+  return getHeroBonus(hero).attack;
+}
+export function getEffectiveDefense(hero: Hero): number {
+  return getHeroBonus(hero).defense;
+}
 export function getEffectiveSpellPower(hero: Hero): number {
-  return hero.spellPower + getHeroBonus(hero).spellPower;
+  return getHeroBonus(hero).spellPower;
 }
 export function getEffectiveKnowledge(hero: Hero): number {
-  return hero.knowledge + getHeroBonus(hero).knowledge;
+  return getHeroBonus(hero).knowledge;
 }
-// maxMana = (база + 10 за каждое очко знаний из артефактов) × (1 + сумма множителей%).
+// maxMana = знания × 10 × (1 + множители% от артефактов).
 export function getEffectiveMaxMana(hero: Hero): number {
   const b = getHeroBonus(hero);
-  const fromKnowledge = hero.maxMana + b.knowledge * 10;
-  return Math.round(fromKnowledge * (1 + b.manaMult / 100));
+  return Math.round(b.knowledge * 10 * (1 + b.manaMult / 100));
 }

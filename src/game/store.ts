@@ -224,6 +224,7 @@ export const useGame = create<GameState & Actions>()(
             unitId: s.unitId,
             count: Math.max(1, Math.round(randInt(rng, s.min, s.max) * armyMult)),
           }));
+          const baseMana = proto.baseStats.knowledge * 10;
           const hero: Hero = {
             id: hid,
             ownerId: pid,
@@ -237,10 +238,12 @@ export const useGame = create<GameState & Actions>()(
             level: 1,
             xp: 0,
             statBonus: { attack: 0, defense: 0, spellPower: 0, knowledge: 0 },
-            spellPower: 1,
-            knowledge: 1,
-            mana: 10,
-            maxMana: 10,
+            attack: proto.baseStats.attack,
+            defense: proto.baseStats.defense,
+            spellPower: proto.baseStats.spellPower,
+            knowledge: proto.baseStats.knowledge,
+            mana: baseMana,
+            maxMana: baseMana,
             spells: [],
             icon: proto.icon,
           };
@@ -606,6 +609,7 @@ export const useGame = create<GameState & Actions>()(
           unitId: stack.unitId,
           count: randInt(rng, stack.min, stack.max),
         }));
+        const baseMana = proto.baseStats.knowledge * 10;
         let hero: Hero = {
           id: hid,
           ownerId: town.ownerId,
@@ -619,10 +623,12 @@ export const useGame = create<GameState & Actions>()(
           level: 1,
           xp: 0,
           statBonus: { attack: 0, defense: 0, spellPower: 0, knowledge: 0 },
-          spellPower: 1,
-          knowledge: 1,
-          mana: 10,
-          maxMana: 10,
+          attack: proto.baseStats.attack,
+          defense: proto.baseStats.defense,
+          spellPower: proto.baseStats.spellPower,
+          knowledge: proto.baseStats.knowledge,
+          mana: baseMana,
+          maxMana: baseMana,
           spells: [],
           icon: proto.icon,
         };
@@ -1080,7 +1086,7 @@ export const useGame = create<GameState & Actions>()(
       name: "heroes-web-save",
       // v6 — baseline после релиза. С этой точки любое изменение формата
       // ОБЯЗАНО сопровождаться миграцией в migrate() ниже, а не просто бампом version.
-      version: 8,
+      version: 9,
       migrate: (persisted, fromVersion) => {
         const state = persisted as Partial<GameState>;
         // Сейвы версий < 6 — времён до релиза, формат менялся свободно. Их не мигрируем,
@@ -1133,6 +1139,22 @@ export const useGame = create<GameState & Actions>()(
                   spellPower: old?.spellPower ?? 0,
                   knowledge: old?.knowledge ?? 0,
                 },
+              } as Hero;
+            }
+            state.heroes = newHeroes;
+          }
+        }
+        if (fromVersion < 9) {
+          // v9: у героев появились базовые attack/defense (раньше неявно 0).
+          // Магия (spellPower/knowledge) в сейвах уже есть с v7. Старым героям
+          // оставляем attack=0, defense=0 — поведение не меняется.
+          if (state.heroes) {
+            const newHeroes: Record<string, Hero> = {};
+            for (const [id, h] of Object.entries(state.heroes)) {
+              newHeroes[id] = {
+                ...h,
+                attack: (h as Partial<Hero>).attack ?? 0,
+                defense: (h as Partial<Hero>).defense ?? 0,
               } as Hero;
             }
             state.heroes = newHeroes;

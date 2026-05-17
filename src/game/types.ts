@@ -98,9 +98,13 @@ export interface Hero {
   // Прибавки от повышения уровней. Со временем сюда копятся +1 к одной из
   // четырёх характеристик за каждый уровень.
   statBonus: { attack: number; defense: number; spellPower: number; knowledge: number };
-  // Магические параметры. maxMana = knowledge * 10, восстанавливается в гильдии магов / в начале боя нет.
+  // Базовые характеристики героя (раздаются по 8 очков, мин. 1 в каждой).
+  // Эффективная атака/защита/SP/знания = база + statBonus + бонусы артефактов.
+  attack: number;
+  defense: number;
   spellPower: number;
   knowledge: number;
+  // maxMana = knowledge * 10 (хранится для удобства, эффективная считается из totals).
   mana: number;
   maxMana: number;
   spells: string[]; // id выученных заклинаний

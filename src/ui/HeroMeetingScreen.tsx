@@ -188,15 +188,21 @@ function HeroPanel({
   const sp = getEffectiveSpellPower(hero);
   const know = getEffectiveKnowledge(hero);
   const maxMana = getEffectiveMaxMana(hero);
+  const base = {
+    attack: hero.attack,
+    defense: hero.defense,
+    spellPower: hero.spellPower,
+    knowledge: hero.knowledge,
+  };
   const lvl = hero.statBonus;
   const gear = {
-    attack: bonus.attack - lvl.attack,
-    defense: bonus.defense - lvl.defense,
+    attack: bonus.attack - base.attack - lvl.attack,
+    defense: bonus.defense - base.defense - lvl.defense,
     speed: bonus.speed,
     hpBonus: bonus.hpBonus,
     movement: bonus.movement,
-    spellPower: bonus.spellPower - lvl.spellPower,
-    knowledge: bonus.knowledge - lvl.knowledge,
+    spellPower: bonus.spellPower - base.spellPower - lvl.spellPower,
+    knowledge: bonus.knowledge - base.knowledge - lvl.knowledge,
     manaMult: bonus.manaMult,
   };
   return (
@@ -220,7 +226,7 @@ function HeroPanel({
           💧 {hero.mana}/{maxMana}
         </span>
       </div>
-      <BonusBreakdown lvl={lvl} gear={gear} />
+      <BonusBreakdown base={base} lvl={lvl} gear={gear} />
 
       <h4 style={{ color: "var(--gold)", margin: "16px 0 6px" }}>Армия</h4>
       <div className="meeting-army">
@@ -290,11 +296,13 @@ function HeroPanel({
   );
 }
 
-// Компактная разбивка бонусов: вклад уровней и вклад артефактов отдельной строкой.
+// Компактная разбивка бонусов: база героя, вклад уровней и вклад артефактов.
 function BonusBreakdown({
+  base,
   lvl,
   gear,
 }: {
+  base: { attack: number; defense: number; spellPower: number; knowledge: number };
   lvl: { attack: number; defense: number; spellPower: number; knowledge: number };
   gear: {
     attack: number;
@@ -307,6 +315,7 @@ function BonusBreakdown({
     manaMult: number;
   };
 }) {
+  const baseParts = [`⚔️ ${base.attack}`, `🛡️ ${base.defense}`, `🔮 ${base.spellPower}`, `📚 ${base.knowledge}`];
   const lvlParts: string[] = [];
   if (lvl.attack) lvlParts.push(`⚔️ +${lvl.attack}`);
   if (lvl.defense) lvlParts.push(`🛡️ +${lvl.defense}`);
@@ -323,6 +332,9 @@ function BonusBreakdown({
   if (gear.manaMult) gearParts.push(`💧 +${gear.manaMult}%`);
   return (
     <div className="meeting-bonus-breakdown">
+      <div>
+        <span className="bb-label">База:</span> {baseParts.join(" · ")}
+      </div>
       <div>
         <span className="bb-label">От уровней:</span>{" "}
         {lvlParts.length ? lvlParts.join(" · ") : <span className="bb-empty">—</span>}
