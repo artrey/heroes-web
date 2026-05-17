@@ -15,6 +15,9 @@ import { computeDanger } from "../game/utils/zoc";
 import { getTerrainBaseColor, getTerrainTile } from "./terrainPatterns";
 
 const TILE_SIZE = 32;
+// Сколько клеток «воздуха» можно прокрутить за реальные границы карты,
+// чтобы содержимое не упиралось в края экрана и боковую панель.
+const EDGE_PADDING_TILES = 5;
 
 const TERRAIN_COLOR: Record<string, string> = {
   grass: "#3a5a2a",
@@ -76,6 +79,25 @@ export function AdventureScreen() {
     [map, heroes, activePlayerId],
   );
 
+  // Границы камеры с учётом паддинга по краям. Возвращает [min, max] для оси.
+  function cameraRange(axisSize: number, viewportSize: number): [number, number] {
+    const pad = EDGE_PADDING_TILES * TILE_SIZE;
+    const min = -pad;
+    const max = Math.max(min, axisSize * TILE_SIZE - viewportSize + pad);
+    return [min, max];
+  }
+
+  function clampCamera(cam: Coord): Coord {
+    const c = canvasRef.current;
+    if (!c || !map) return cam;
+    const [minX, maxX] = cameraRange(map.width, c.width);
+    const [minY, maxY] = cameraRange(map.height, c.height);
+    return {
+      x: Math.max(minX, Math.min(maxX, cam.x)),
+      y: Math.max(minY, Math.min(maxY, cam.y)),
+    };
+  }
+
   // Центрируем камеру на выбранном герое при первом монтировании / смене героя.
   useEffect(() => {
     if (!map) return;
@@ -83,11 +105,9 @@ export function AdventureScreen() {
     if (hero && containerRef.current) {
       const ww = containerRef.current.clientWidth;
       const hh = containerRef.current.clientHeight;
-      setCamera({
-        x: Math.max(0, Math.min(map.width * TILE_SIZE - ww, hero.pos.x * TILE_SIZE - ww / 2)),
-        y: Math.max(0, Math.min(map.height * TILE_SIZE - hh, hero.pos.y * TILE_SIZE - hh / 2)),
-      });
+      setCamera(clampCamera({ x: hero.pos.x * TILE_SIZE - ww / 2, y: hero.pos.y * TILE_SIZE - hh / 2 }));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHeroId, map]);
 
   // Рендер карты.
@@ -179,12 +199,7 @@ export function AdventureScreen() {
   function centerCameraOnTile(tx: number, ty: number) {
     const c = canvasRef.current;
     if (!c || !map) return;
-    const maxX = Math.max(0, map.width * TILE_SIZE - c.width);
-    const maxY = Math.max(0, map.height * TILE_SIZE - c.height);
-    setCamera({
-      x: Math.max(0, Math.min(maxX, tx * TILE_SIZE - c.width / 2)),
-      y: Math.max(0, Math.min(maxY, ty * TILE_SIZE - c.height / 2)),
-    });
+    setCamera(clampCamera({ x: tx * TILE_SIZE - c.width / 2, y: ty * TILE_SIZE - c.height / 2 }));
   }
 
   function handleMouseMove(ev: React.MouseEvent) {
@@ -192,15 +207,7 @@ export function AdventureScreen() {
     if (panRef.current && map) {
       const dx = ev.clientX - panRef.current.startX;
       const dy = ev.clientY - panRef.current.startY;
-      const c = canvasRef.current;
-      if (c) {
-        const maxX = Math.max(0, map.width * TILE_SIZE - c.width);
-        const maxY = Math.max(0, map.height * TILE_SIZE - c.height);
-        setCamera({
-          x: Math.max(0, Math.min(maxX, panRef.current.camX - dx)),
-          y: Math.max(0, Math.min(maxY, panRef.current.camY - dy)),
-        });
-      }
+      setCamera(clampCamera({ x: panRef.current.camX - dx, y: panRef.current.camY - dy }));
       return;
     }
     // Drag по минимапу с зажатой левой кнопкой.
@@ -310,12 +317,7 @@ export function AdventureScreen() {
         dx = e.deltaX;
         dy = e.deltaY;
       }
-      const maxX = Math.max(0, map!.width * TILE_SIZE - c!.width);
-      const maxY = Math.max(0, map!.height * TILE_SIZE - c!.height);
-      setCamera(cam => ({
-        x: Math.max(0, Math.min(maxX, cam.x + dx)),
-        y: Math.max(0, Math.min(maxY, cam.y + dy)),
-      }));
+      setCamera(cam => clampCamera({ x: cam.x + dx, y: cam.y + dy }));
     }
     c.addEventListener("wheel", onWheel, { passive: false });
     return () => c.removeEventListener("wheel", onWheel);
@@ -325,18 +327,10 @@ export function AdventureScreen() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const step = 64;
-      if (e.key === "ArrowLeft") setCamera(c => ({ ...c, x: Math.max(0, c.x - step) }));
-      if (e.key === "ArrowRight" && map)
-        setCamera(c => ({
-          ...c,
-          x: Math.min(map.width * TILE_SIZE - (containerRef.current?.clientWidth ?? 0), c.x + step),
-        }));
-      if (e.key === "ArrowUp") setCamera(c => ({ ...c, y: Math.max(0, c.y - step) }));
-      if (e.key === "ArrowDown" && map)
-        setCamera(c => ({
-          ...c,
-          y: Math.min(map.height * TILE_SIZE - (containerRef.current?.clientHeight ?? 0), c.y + step),
-        }));
+      if (e.key === "ArrowLeft") setCamera(c => clampCamera({ x: c.x - step, y: c.y }));
+      if (e.key === "ArrowRight") setCamera(c => clampCamera({ x: c.x + step, y: c.y }));
+      if (e.key === "ArrowUp") setCamera(c => clampCamera({ x: c.x, y: c.y - step }));
+      if (e.key === "ArrowDown") setCamera(c => clampCamera({ x: c.x, y: c.y + step }));
       if (e.key === "Enter") endTurn();
     }
     window.addEventListener("keydown", onKey);
@@ -867,13 +861,16 @@ function drawMinimap(
     ctx.fillStyle = players[h.ownerId]?.color ?? "#fff";
     ctx.fillRect(ox + h.pos.x * px, oy + h.pos.y * px, px, px);
   }
-  // Рамка вьюпорта.
-  const vx = ox + Math.floor((camera.x / TILE_SIZE) * px);
-  const vy = oy + Math.floor((camera.y / TILE_SIZE) * px);
-  const vw = Math.floor((cw / TILE_SIZE) * px);
-  const vh = Math.floor((ch / TILE_SIZE) * px);
-  ctx.strokeStyle = "#ffd966";
-  ctx.strokeRect(vx, vy, Math.min(vw, mmW - (vx - ox)), Math.min(vh, mmH - (vy - oy)));
+  // Рамка вьюпорта — клипуем к границам карты, иначе из-за паддинга
+  // рамка может выходить за пределы минимапа.
+  const wx0 = Math.max(0, camera.x / TILE_SIZE);
+  const wy0 = Math.max(0, camera.y / TILE_SIZE);
+  const wx1 = Math.min(map.width, (camera.x + cw) / TILE_SIZE);
+  const wy1 = Math.min(map.height, (camera.y + ch) / TILE_SIZE);
+  if (wx1 > wx0 && wy1 > wy0) {
+    ctx.strokeStyle = "#ffd966";
+    ctx.strokeRect(ox + wx0 * px, oy + wy0 * px, (wx1 - wx0) * px, (wy1 - wy0) * px);
+  }
 }
 
 function PathCostBadge({ total, mp }: { total: number; mp: number }) {
