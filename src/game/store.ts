@@ -27,7 +27,7 @@ import type {
   Town,
   UnitStack,
 } from "./types";
-import { VISION_RADIUS_HERO, VISION_RADIUS_TOWN } from "./types";
+import { ARTIFACT_SLOT_ORDER, VISION_RADIUS_HERO, VISION_RADIUS_TOWN } from "./types";
 import { getEffectiveMaxMana, getEffectiveMaxMP } from "./utils/heroBonus";
 import { makeId, resetIdCounter } from "./utils/id";
 import { levelFromXp } from "./utils/leveling";
@@ -132,6 +132,8 @@ interface Actions {
     source: { kind: "equipped"; slot: ArtifactSlot } | { kind: "backpack"; idx: number },
     toHeroId: string,
   ) => void;
+  transferAllArmy: (fromHeroId: string, toHeroId: string) => void;
+  transferAllArtifacts: (fromHeroId: string, toHeroId: string) => void;
   battleAct: (action: BattleAction) => void;
   endBattleVictory: () => void;
   endBattleDefeat: () => void;
@@ -792,6 +794,65 @@ export const useGame = create<GameState & Actions>()(
             [heroId]: {
               ...hero,
               artifacts: { equipped: newEquipped, backpack: [...hero.artifacts.backpack, artId] },
+            },
+          },
+        });
+      },
+
+      // Передать всю армию из одного героя в другого. Стеки с одинаковым unitId
+      // сливаются, новые — кладутся в свободные слоты. Если у получателя нет места,
+      // лишние стеки остаются у исходного героя.
+      transferAllArmy: (fromHeroId, toHeroId) => {
+        const s = get();
+        const from = s.heroes[fromHeroId];
+        const to = s.heroes[toHeroId];
+        if (!from || !to || fromHeroId === toHeroId) return;
+        if (from.ownerId !== to.ownerId) return;
+        const toArmy = to.army.map(st => ({ ...st }));
+        const remaining: UnitStack[] = [];
+        for (const stack of from.army) {
+          const ex = toArmy.find(st => st.unitId === stack.unitId);
+          if (ex) {
+            ex.count += stack.count;
+            continue;
+          }
+          if (toArmy.length < 7) {
+            toArmy.push({ ...stack });
+          } else {
+            remaining.push({ ...stack });
+          }
+        }
+        set({
+          heroes: {
+            ...s.heroes,
+            [fromHeroId]: { ...from, army: remaining },
+            [toHeroId]: { ...to, army: toArmy },
+          },
+        });
+      },
+
+      // Передать все артефакты (надетые + рюкзак) другому герою. Получатель кладёт
+      // всё себе в рюкзак — пусть решит сам, что надевать.
+      transferAllArtifacts: (fromHeroId, toHeroId) => {
+        const s = get();
+        const from = s.heroes[fromHeroId];
+        const to = s.heroes[toHeroId];
+        if (!from || !to || fromHeroId === toHeroId) return;
+        if (from.ownerId !== to.ownerId) return;
+        const all: string[] = [];
+        for (const slot of ARTIFACT_SLOT_ORDER) {
+          const aid = from.artifacts.equipped[slot];
+          if (aid) all.push(aid);
+        }
+        for (const aid of from.artifacts.backpack) all.push(aid);
+        if (all.length === 0) return;
+        set({
+          heroes: {
+            ...s.heroes,
+            [fromHeroId]: { ...from, artifacts: { equipped: {}, backpack: [] } },
+            [toHeroId]: {
+              ...to,
+              artifacts: { ...to.artifacts, backpack: [...to.artifacts.backpack, ...all] },
             },
           },
         });

@@ -6,7 +6,12 @@ import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import { ARTIFACT_SLOT_ORDER } from "../game/types";
 import type { ArtifactSlot, Hero } from "../game/types";
-import { getHeroBonus } from "../game/utils/heroBonus";
+import {
+  getEffectiveKnowledge,
+  getEffectiveMaxMana,
+  getEffectiveSpellPower,
+  getHeroBonus,
+} from "../game/utils/heroBonus";
 
 type Selected =
   | { kind: "army"; heroId: string; slot: number }
@@ -22,6 +27,8 @@ export function HeroMeetingScreen() {
   const equipFromBackpack = useGame(s => s.equipFromBackpack);
   const unequipToBackpack = useGame(s => s.unequipToBackpack);
   const transferArtifact = useGame(s => s.transferArtifact);
+  const transferAllArmy = useGame(s => s.transferAllArmy);
+  const transferAllArtifacts = useGame(s => s.transferAllArtifacts);
   const close = useGame(s => s.closeHeroMeeting);
 
   const [selected, setSelected] = useState<Selected>(null);
@@ -115,6 +122,37 @@ export function HeroMeetingScreen() {
           onEquipped={s => clickEquipped(a, s)}
           onBackpack={i => clickBackpack(a, i)}
         />
+        <div className="meeting-transfer">
+          <div className="meeting-transfer-label">Передать всё</div>
+          <button
+            disabled={a.army.length === 0}
+            onClick={() => transferAllArmy(a.id, b.id)}
+            title="Передать всю армию правому герою"
+          >
+            👥 ⇒
+          </button>
+          <button
+            disabled={b.army.length === 0}
+            onClick={() => transferAllArmy(b.id, a.id)}
+            title="Передать всю армию левому герою"
+          >
+            ⇐ 👥
+          </button>
+          <button
+            disabled={Object.keys(a.artifacts.equipped).length === 0 && a.artifacts.backpack.length === 0}
+            onClick={() => transferAllArtifacts(a.id, b.id)}
+            title="Передать все артефакты правому герою (в рюкзак)"
+          >
+            💼 ⇒
+          </button>
+          <button
+            disabled={Object.keys(b.artifacts.equipped).length === 0 && b.artifacts.backpack.length === 0}
+            onClick={() => transferAllArtifacts(b.id, a.id)}
+            title="Передать все артефакты левому герою (в рюкзак)"
+          >
+            ⇐ 💼
+          </button>
+        </div>
         <HeroPanel
           hero={b}
           selected={selected}
@@ -147,28 +185,44 @@ function HeroPanel({
   onBackpack: (idx: number) => void;
 }) {
   const bonus = getHeroBonus(hero);
+  const sp = getEffectiveSpellPower(hero);
+  const know = getEffectiveKnowledge(hero);
+  const maxMana = getEffectiveMaxMana(hero);
+  const lvl = hero.statBonus;
+  const gear = {
+    attack: bonus.attack - lvl.attack,
+    defense: bonus.defense - lvl.defense,
+    speed: bonus.speed,
+    hpBonus: bonus.hpBonus,
+    movement: bonus.movement,
+    spellPower: bonus.spellPower,
+    knowledge: bonus.knowledge,
+    manaMult: bonus.manaMult,
+  };
   return (
     <div className="meeting-hero">
       <div className="meeting-hero-header">
         <span style={{ fontSize: 48 }}>{hero.icon}</span>
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontSize: 20, color: "var(--gold)" }}>{hero.name}</div>
           <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
             Уровень {hero.level} · {FACTION_META[hero.faction].name} · ⚡ {hero.movePoints} MP
           </div>
-          {(bonus.attack || bonus.defense || bonus.speed || bonus.hpBonus || bonus.movement) > 0 && (
-            <div style={{ fontSize: 12, color: "var(--good)", marginTop: 4 }}>
-              {bonus.attack ? `+${bonus.attack} атк ` : ""}
-              {bonus.defense ? `+${bonus.defense} защ ` : ""}
-              {bonus.speed ? `+${bonus.speed} ск ` : ""}
-              {bonus.hpBonus ? `+${bonus.hpBonus} HP ` : ""}
-              {bonus.movement ? `+${bonus.movement} MP` : ""}
-            </div>
-          )}
         </div>
       </div>
 
-      <h4 style={{ color: "var(--gold)", margin: "12px 0 6px" }}>Армия</h4>
+      <div className="meeting-stats" title="Сумма с учётом уровней и артефактов">
+        <span>⚔️ {bonus.attack}</span>
+        <span>🛡️ {bonus.defense}</span>
+        <span>🔮 {sp}</span>
+        <span>📚 {know}</span>
+        <span>
+          💧 {hero.mana}/{maxMana}
+        </span>
+      </div>
+      <BonusBreakdown lvl={lvl} gear={gear} />
+
+      <h4 style={{ color: "var(--gold)", margin: "16px 0 6px" }}>Армия</h4>
       <div className="meeting-army">
         {Array.from({ length: 7 }).map((_, slot) => {
           const stack = hero.army[slot];
@@ -231,6 +285,49 @@ function HeroPanel({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// Компактная разбивка бонусов: вклад уровней и вклад артефактов отдельной строкой.
+function BonusBreakdown({
+  lvl,
+  gear,
+}: {
+  lvl: { attack: number; defense: number };
+  gear: {
+    attack: number;
+    defense: number;
+    speed: number;
+    hpBonus: number;
+    movement: number;
+    spellPower: number;
+    knowledge: number;
+    manaMult: number;
+  };
+}) {
+  const lvlParts: string[] = [];
+  if (lvl.attack) lvlParts.push(`⚔️ +${lvl.attack}`);
+  if (lvl.defense) lvlParts.push(`🛡️ +${lvl.defense}`);
+  const gearParts: string[] = [];
+  if (gear.attack) gearParts.push(`⚔️ +${gear.attack}`);
+  if (gear.defense) gearParts.push(`🛡️ +${gear.defense}`);
+  if (gear.speed) gearParts.push(`🏃 +${gear.speed}`);
+  if (gear.hpBonus) gearParts.push(`❤️ +${gear.hpBonus}`);
+  if (gear.movement) gearParts.push(`🥾 +${gear.movement}`);
+  if (gear.spellPower) gearParts.push(`🔮 +${gear.spellPower}`);
+  if (gear.knowledge) gearParts.push(`📚 +${gear.knowledge}`);
+  if (gear.manaMult) gearParts.push(`💧 +${gear.manaMult}%`);
+  return (
+    <div className="meeting-bonus-breakdown">
+      <div>
+        <span className="bb-label">От уровней:</span>{" "}
+        {lvlParts.length ? lvlParts.join(" · ") : <span className="bb-empty">—</span>}
+      </div>
+      <div>
+        <span className="bb-label">От артефактов:</span>{" "}
+        {gearParts.length ? gearParts.join(" · ") : <span className="bb-empty">—</span>}
       </div>
     </div>
   );

@@ -656,10 +656,58 @@ select {
 .meeting-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr auto 1fr;
   gap: 16px;
   padding: 24px;
   overflow-y: auto;
+  align-items: start;
+}
+.meeting-transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-width: 90px;
+  align-self: center;
+}
+.meeting-transfer-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  margin-bottom: 4px;
+}
+.meeting-transfer button {
+  padding: 6px 10px;
+}
+.meeting-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text);
+  margin-top: 10px;
+  padding: 6px 8px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.meeting-bonus-breakdown {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.meeting-bonus-breakdown .bb-label {
+  color: var(--text-dim);
+}
+.meeting-bonus-breakdown .bb-empty {
+  color: var(--text-dim);
+  font-style: italic;
 }
 .meeting-hero {
   background: var(--bg-1);
