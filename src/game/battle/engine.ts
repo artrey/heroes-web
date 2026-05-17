@@ -591,16 +591,38 @@ export function doCastSpell(
     newB.log.push(
       battleLine(newB.round, `${sp.icon} ${sp.name}: +${sp.basePower} к атаке (${UNITS[target.unitId].name})`),
     );
+  } else if (sp.effect === "buffDefense") {
+    target.tempBonus.defense += sp.basePower;
+    newB.log.push(
+      battleLine(newB.round, `${sp.icon} ${sp.name}: +${sp.basePower} к защите (${UNITS[target.unitId].name})`),
+    );
   } else if (sp.effect === "buffSpeed") {
     target.tempBonus.speed += sp.basePower;
     newB.log.push(
       battleLine(newB.round, `${sp.icon} ${sp.name}: +${sp.basePower} к скорости (${UNITS[target.unitId].name})`),
+    );
+  } else if (sp.effect === "debuffAttack") {
+    target.tempBonus.attack -= sp.basePower;
+    newB.log.push(
+      battleLine(newB.round, `${sp.icon} ${sp.name}: −${sp.basePower} к атаке (${UNITS[target.unitId].name})`),
+    );
+  } else if (sp.effect === "debuffDefense") {
+    target.tempBonus.defense -= sp.basePower;
+    newB.log.push(
+      battleLine(newB.round, `${sp.icon} ${sp.name}: −${sp.basePower} к защите (${UNITS[target.unitId].name})`),
     );
   } else if (sp.effect === "debuffSpeed") {
     target.tempBonus.speed -= sp.basePower;
     newB.log.push(
       battleLine(newB.round, `${sp.icon} ${sp.name}: −${sp.basePower} к скорости (${UNITS[target.unitId].name})`),
     );
+  } else if (sp.effect === "heal") {
+    // Лечит только верхний юнит (без воскрешения убитых).
+    const maxUnitHp = effectiveStats(target, bonusFor(newB, target.side)).hp;
+    const amount = sp.basePower + sp.perPower * magic.spellPower;
+    const restored = Math.max(0, Math.min(amount, maxUnitHp - target.hp));
+    target.hp += restored;
+    newB.log.push(battleLine(newB.round, `${sp.icon} ${sp.name}: +${restored} HP (${UNITS[target.unitId].name})`));
   }
 
   // Эффекты на скорость могут влиять на дальнейший порядок ходов — пересчитаем
@@ -640,8 +662,17 @@ export function previewSpell(
     const res = applyDamageToStack(b, target, raw);
     return { kind: "damage", dmg: res.dmg, killed: res.killed, canCast };
   }
+  if (sp.effect === "heal") {
+    const maxUnitHp = effectiveStats(target, bonusFor(b, target.side)).hp;
+    const amount = sp.basePower + sp.perPower * magic.spellPower;
+    const restored = Math.max(0, Math.min(amount, maxUnitHp - target.hp));
+    return { kind: "buff", text: `+${restored} HP верхнему юниту`, canCast };
+  }
   if (sp.effect === "buffAttack") return { kind: "buff", text: `+${sp.basePower} к атаке`, canCast };
+  if (sp.effect === "buffDefense") return { kind: "buff", text: `+${sp.basePower} к защите`, canCast };
   if (sp.effect === "buffSpeed") return { kind: "buff", text: `+${sp.basePower} к скорости`, canCast };
+  if (sp.effect === "debuffAttack") return { kind: "debuff", text: `−${sp.basePower} к атаке`, canCast };
+  if (sp.effect === "debuffDefense") return { kind: "debuff", text: `−${sp.basePower} к защите`, canCast };
   if (sp.effect === "debuffSpeed") return { kind: "debuff", text: `−${sp.basePower} к скорости`, canCast };
   return null;
 }
@@ -685,10 +716,29 @@ function aiCastIfPossible(b: BattleState, side: "attacker" | "defender"): Battle
     const target = enemies.slice().sort((a, b) => b.count * UNITS[b.unitId].hp - a.count * UNITS[a.unitId].hp)[0];
     return doCastSpell(b, side, dmgSpell.id, target.id);
   }
-  // Иначе — буф на самый сильный свой стек.
+  // Дебафф на самого опасного врага.
+  const debuff = spells
+    .filter(
+      s =>
+        (s.effect === "debuffAttack" || s.effect === "debuffDefense" || s.effect === "debuffSpeed") &&
+        s.manaCost <= magic.mana,
+    )
+    .sort((a, b) => b.basePower - a.basePower)[0];
+  if (debuff) {
+    const enemies = b.stacks.filter(s => s.side !== side && s.count > 0);
+    if (enemies.length) {
+      const target = enemies.slice().sort((a, b) => b.count * UNITS[b.unitId].hp - a.count * UNITS[a.unitId].hp)[0];
+      return doCastSpell(b, side, debuff.id, target.id);
+    }
+  }
+  // Бафф/лечение на самый сильный свой стек.
   const buff = spells
-    .filter(s => s.effect === "buffAttack" || s.effect === "buffSpeed")
-    .find(s => s.manaCost <= magic.mana);
+    .filter(
+      s =>
+        (s.effect === "buffAttack" || s.effect === "buffDefense" || s.effect === "buffSpeed" || s.effect === "heal") &&
+        s.manaCost <= magic.mana,
+    )
+    .sort((a, b) => b.basePower - a.basePower)[0];
   if (buff) {
     const allies = b.stacks.filter(s => s.side === side && s.count > 0);
     const target = allies.slice().sort((a, b) => b.count * UNITS[b.unitId].hp - a.count * UNITS[a.unitId].hp)[0];

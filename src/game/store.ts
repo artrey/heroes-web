@@ -8,7 +8,7 @@ import { getPreset } from "./data/difficulty";
 import { FACTION_LIST, FACTION_META } from "./data/factions";
 import { getHeroProto, pickHeroProto } from "./data/heroes";
 import { reverseRate } from "./data/marketRates";
-import { spellsUpToLevel } from "./data/spells";
+import { rollSpellsForGuildLevel } from "./data/spells";
 import { FACTION_UNIT_ORDER, getUnit, UNITS } from "./data/units";
 import { generateMap } from "./map/generate";
 import type {
@@ -537,11 +537,13 @@ export const useGame = create<GameState & Actions>()(
           const unit = UNITS[def.produces];
           newTown.availableUnits[def.produces] = (newTown.availableUnits[def.produces] ?? 0) + unit.growth;
         }
-        // Если это очередной уровень гильдии магов — открываем все заклинания этого уровня и ниже.
+        // Если это очередной уровень гильдии магов — катаем кости и докидываем
+        // случайные заклинания этого уровня (по 4/3/2 для L1/L2/L3) к уже известным.
         const guildLevel = MAGE_GUILD_LEVEL[buildingId];
         if (guildLevel) {
           newTown.mageGuildLevel = guildLevel;
-          newTown.learnedSpells = spellsUpToLevel(guildLevel);
+          const rolled = rollSpellsForGuildLevel(guildLevel as 1 | 2 | 3, newTown.learnedSpells);
+          newTown.learnedSpells = [...newTown.learnedSpells, ...rolled];
         }
         // Если в этом городе стоит герой и мы построили гильдию магов — он сразу учит заклинания.
         let newHeroes = s.heroes;

@@ -267,7 +267,15 @@ export interface BattleState {
 // Заклинания.
 export type SpellSchool = "fire" | "water" | "air" | "earth" | "light";
 export type SpellTargetKind = "enemy" | "ally" | "any";
-export type SpellEffectKind = "damage" | "buffAttack" | "buffSpeed" | "debuffSpeed";
+export type SpellEffectKind =
+  | "damage"
+  | "heal"
+  | "buffAttack"
+  | "buffDefense"
+  | "buffSpeed"
+  | "debuffAttack"
+  | "debuffDefense"
+  | "debuffSpeed";
 
 export interface SpellDef {
   id: string;
