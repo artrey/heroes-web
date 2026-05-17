@@ -12,7 +12,7 @@ import type {
   StackTempBonus,
   UnitStack,
 } from "../types";
-import { getHeroBonus } from "../utils/heroBonus";
+import { getEffectiveKnowledge, getEffectiveMaxMana, getEffectiveSpellPower, getHeroBonus } from "../utils/heroBonus";
 import { makeId } from "../utils/id";
 
 // Поле боя 15x11 — близко к HoMM3. Простая квадратная сетка с 8-связностью.
@@ -41,10 +41,11 @@ const EMPTY_MAGIC: BattleMagic = {
 
 function magicFromHero(h: Hero | null): BattleMagic {
   if (!h) return { ...EMPTY_MAGIC };
+  // Берём эффективные значения — с учётом артефактов и +10/знание для лимита маны.
   return {
-    mana: h.mana,
-    spellPower: h.spellPower,
-    knowledge: h.knowledge,
+    mana: Math.min(h.mana, getEffectiveMaxMana(h)),
+    spellPower: getEffectiveSpellPower(h),
+    knowledge: getEffectiveKnowledge(h),
     spells: [...h.spells],
     lastCastRound: 0,
   };
@@ -166,6 +167,9 @@ function mergeBonus(base: HeroBonus, extra?: Partial<HeroBonus>): HeroBonus {
     speed: base.speed + (extra.speed ?? 0),
     hpBonus: base.hpBonus + (extra.hpBonus ?? 0),
     movement: base.movement + (extra.movement ?? 0),
+    spellPower: base.spellPower + (extra.spellPower ?? 0),
+    knowledge: base.knowledge + (extra.knowledge ?? 0),
+    manaMult: base.manaMult + (extra.manaMult ?? 0),
   };
 }
 

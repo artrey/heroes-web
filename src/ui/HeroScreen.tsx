@@ -7,7 +7,13 @@ import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { ArtifactSlot } from "../game/types";
 import { ARTIFACT_SLOT_ORDER } from "../game/types";
-import { getEffectiveMaxMP, getHeroBonus } from "../game/utils/heroBonus";
+import {
+  getEffectiveKnowledge,
+  getEffectiveMaxMana,
+  getEffectiveMaxMP,
+  getEffectiveSpellPower,
+  getHeroBonus,
+} from "../game/utils/heroBonus";
 import { xpToNextLevel } from "../game/utils/leveling";
 
 type Selected =
@@ -29,6 +35,9 @@ export function HeroScreen() {
   if (!hero) return null;
   const bonus = getHeroBonus(hero);
   const effMaxMP = getEffectiveMaxMP(hero);
+  const effSpellPower = getEffectiveSpellPower(hero);
+  const effKnowledge = getEffectiveKnowledge(hero);
+  const effMaxMana = getEffectiveMaxMana(hero);
 
   function clickArmy(slot: number) {
     if (!hero) return;
@@ -106,20 +115,28 @@ export function HeroScreen() {
               <span>🛡️ База защиты (от уровней)</span>
               <span>+{hero.statBonus.defense}</span>
             </div>
-            <div className="stat-row">
+            <div className="stat-row" title="База + бонусы от артефактов">
               <span>🔮 Сила магии</span>
-              <span>{hero.spellPower}</span>
+              <span>
+                {effSpellPower}
+                {effSpellPower !== hero.spellPower && (
+                  <span style={{ color: "var(--text-dim)", marginLeft: 4 }}>(база {hero.spellPower})</span>
+                )}
+              </span>
             </div>
-            <div className="stat-row">
+            <div className="stat-row" title="База + бонусы от артефактов">
               <span>📚 Знания</span>
               <span>
-                {hero.knowledge} (макс. маны {hero.maxMana})
+                {effKnowledge}
+                {effKnowledge !== hero.knowledge && (
+                  <span style={{ color: "var(--text-dim)", marginLeft: 4 }}>(база {hero.knowledge})</span>
+                )}
               </span>
             </div>
             <div className="stat-row">
               <span>💧 Мана</span>
               <span>
-                {hero.mana} / {hero.maxMana}
+                {hero.mana} / {effMaxMana}
               </span>
             </div>
             <div className="stat-row" style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}>
@@ -133,8 +150,19 @@ export function HeroScreen() {
                 speed: bonus.speed,
                 hpBonus: bonus.hpBonus,
                 movement: bonus.movement,
+                spellPower: bonus.spellPower,
+                knowledge: bonus.knowledge,
+                manaMult: bonus.manaMult,
               };
-              const total = gear.attack + gear.defense + gear.speed + gear.hpBonus + gear.movement;
+              const total =
+                gear.attack +
+                gear.defense +
+                gear.speed +
+                gear.hpBonus +
+                gear.movement +
+                gear.spellPower +
+                gear.knowledge +
+                gear.manaMult;
               return (
                 <>
                   {gear.attack ? <BonusRow label="⚔️ Атака" value={`+${gear.attack}`} /> : null}
@@ -142,6 +170,9 @@ export function HeroScreen() {
                   {gear.speed ? <BonusRow label="🏃 Скорость" value={`+${gear.speed}`} /> : null}
                   {gear.hpBonus ? <BonusRow label="❤️ HP" value={`+${gear.hpBonus}`} /> : null}
                   {gear.movement ? <BonusRow label="🥾 Доп. MP" value={`+${gear.movement}`} /> : null}
+                  {gear.spellPower ? <BonusRow label="🔮 Сила магии" value={`+${gear.spellPower}`} /> : null}
+                  {gear.knowledge ? <BonusRow label="📚 Знания" value={`+${gear.knowledge}`} /> : null}
+                  {gear.manaMult ? <BonusRow label="💧 Макс. мана" value={`+${gear.manaMult}%`} /> : null}
                   {total === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>—</div>}
                 </>
               );
@@ -223,7 +254,7 @@ export function HeroScreen() {
           <h3 style={{ color: "var(--gold)", margin: "20px 0 8px" }}>
             Заклинания ({hero.spells.length}){" "}
             <span style={{ color: "var(--text-dim)", fontSize: 12, fontWeight: "normal" }}>
-              · мана {hero.mana} / {hero.maxMana} · сила {hero.spellPower}
+              · мана {hero.mana} / {effMaxMana} · сила {effSpellPower}
             </span>
           </h3>
           <div className="spellbook-grid">

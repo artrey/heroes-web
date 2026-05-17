@@ -28,7 +28,7 @@ import type {
   UnitStack,
 } from "./types";
 import { VISION_RADIUS_HERO, VISION_RADIUS_TOWN } from "./types";
-import { getEffectiveMaxMP } from "./utils/heroBonus";
+import { getEffectiveMaxMana, getEffectiveMaxMP } from "./utils/heroBonus";
 import { makeId, resetIdCounter } from "./utils/id";
 import { levelFromXp } from "./utils/leveling";
 import { chebyshev, findPath, STEP_STRAIGHT, stepCost } from "./utils/pathfind";
@@ -921,8 +921,8 @@ export const useGame = create<GameState & Actions>()(
             xp: newXp,
             level: newLevel,
             statBonus: newStatBonus,
-            // Перенесём остаточную ману из боя обратно герою.
-            mana: Math.max(0, Math.min(attacker.maxMana, b.attackerMagic.mana)),
+            // Перенесём остаточную ману из боя обратно герою (клампим по эффективной).
+            mana: Math.max(0, Math.min(getEffectiveMaxMana(attacker), b.attackerMagic.mana)),
           },
         };
 
@@ -1060,15 +1060,16 @@ export const useGame = create<GameState & Actions>()(
 // =================== ВСПОМОГАТЕЛЬНОЕ ===================
 
 // Применить эффект гильдии магов: герой учит все доступные в городе заклинания
-// и восстанавливает ману. Используется при заходе героя в свой город и при найме.
+// и восстанавливает ману до эффективного максимума (с учётом артефактов).
 function applyMageGuildVisit(hero: Hero, town: Town): Hero {
   if (town.learnedSpells.length === 0) return hero;
   const before = new Set(hero.spells);
   const next = new Set(hero.spells);
   for (const s of town.learnedSpells) next.add(s);
+  const effMax = getEffectiveMaxMana(hero);
   const learnedSomething = next.size !== before.size;
-  if (!learnedSomething && hero.mana >= hero.maxMana) return hero;
-  return { ...hero, spells: [...next], mana: hero.maxMana };
+  if (!learnedSomething && hero.mana >= effMax) return hero;
+  return { ...hero, spells: [...next], mana: effMax };
 }
 
 function addToArmy(army: UnitStack[], unitId: string, count: number): UnitStack[] {

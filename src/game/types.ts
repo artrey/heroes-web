@@ -70,6 +70,12 @@ export interface HeroBonus {
   speed: number;
   hpBonus: number;
   movement: number;
+  // Магические бонусы от артефактов.
+  spellPower: number;
+  knowledge: number;
+  // Процентная прибавка к максимальной мане (умножается на mana от знаний),
+  // например 50 = +50% к лимиту маны.
+  manaMult: number;
 }
 
 export interface HeroArtifacts {

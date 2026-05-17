@@ -6,7 +6,12 @@ import { FACTION_META } from "../game/data/factions";
 import { UNITS as UNITS_LOCAL } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
-import { getHeroBonus } from "../game/utils/heroBonus";
+import {
+  getEffectiveKnowledge,
+  getEffectiveMaxMana,
+  getEffectiveSpellPower,
+  getHeroBonus,
+} from "../game/utils/heroBonus";
 import { dailyIncomeFor } from "../game/utils/income";
 import { findPath, isPassable, pathCost, stepCost } from "../game/utils/pathfind";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
@@ -467,17 +472,20 @@ export function AdventureScreen() {
 
 function HeroStatsLine({ hero }: { hero: Hero }) {
   const bonus = getHeroBonus(hero);
+  const sp = getEffectiveSpellPower(hero);
+  const know = getEffectiveKnowledge(hero);
+  const maxMana = getEffectiveMaxMana(hero);
   return (
     <div
       style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap" }}
-      title="Атака / Защита / Сила магии / Знания · Мана"
+      title="Атака / Защита / Сила магии / Знания · Мана (с учётом артефактов)"
     >
       <span>⚔️ {bonus.attack}</span>
       <span>🛡️ {bonus.defense}</span>
-      <span>🔮 {hero.spellPower}</span>
-      <span>📚 {hero.knowledge}</span>
+      <span>🔮 {sp}</span>
+      <span>📚 {know}</span>
       <span>
-        💧 {hero.mana}/{hero.maxMana}
+        💧 {hero.mana}/{maxMana}
       </span>
     </div>
   );
