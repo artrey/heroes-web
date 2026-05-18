@@ -207,17 +207,6 @@ export type MapObject =
 
 export type ObjectKind = MapObject["kind"];
 
-// Узкие подмножества для удобства: объекты, которые игрок может «подобрать
-// или взаимодействовать», и объекты со-владельцем (для FoG/UI цвета).
-export type InteractiveObject =
-  | ResourceObject
-  | MineObject
-  | DwellingObject
-  | MonsterObject
-  | ChestObject
-  | ArtifactObject;
-export type OwnedMapObject = MineObject | DwellingObject;
-
 export interface Tile {
   terrain: Terrain;
   passable: boolean;

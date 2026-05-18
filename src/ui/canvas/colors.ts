@@ -9,7 +9,7 @@ export function darken(hex: string, amount: number): string {
   return mixHex(hex, "#000000", amount);
 }
 
-export function mixHex(a: string, b: string, t: number): string {
+function mixHex(a: string, b: string, t: number): string {
   const pa = parseHex(a);
   const pb = parseHex(b);
   const r = Math.round(pa[0] * (1 - t) + pb[0] * t);

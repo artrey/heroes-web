@@ -16,7 +16,7 @@ import { createTownSlice } from "./state/slices/town";
 // action'ов и держит свою бизнес-логику в src/game/state/. Внешний API
 // (useGame((s) => s.xxx)) тот же — UI компоненты ничего не знают про
 // внутреннее устройство.
-export type { Actions, BattleAction, GameStore } from "./state/actions";
+export type { Actions, GameStore } from "./state/actions";
 
 export const useGame = create<GameStore>()(
   persist(

@@ -1,5 +1,9 @@
 import type { ArmySlotRef, ArtifactSlot, Coord, GameState, NewGameOptions, Resource } from "../types";
 
+// Полная типовая модель store: state + actions. Используется как тип zustand'а
+// и в StateCreator всех slice'ов.
+export type GameStore = GameState & Actions;
+
 // Все действия store. UI получает их через useGame((s) => s.action). Слайсы
 // внутри src/game/state/slices/* реализуют куски этого интерфейса; главный
 // store собирает их в один объект.
@@ -59,7 +63,6 @@ export interface Actions {
   transferAllArtifacts: (fromHeroId: string, toHeroId: string) => void;
 
   // ===== Бой =====
-  battleAct: (action: BattleAction) => void;
   // Прямые действия — заведены отдельными actions, чтобы по сети было что
   // прокидывать (UI раньше напрямую вызывал do* из engine).
   battleAttack: (attackerId: string, defenderId: string, approachTo?: Coord) => void;
@@ -73,16 +76,3 @@ export interface Actions {
   endBattleVictory: () => void;
   endBattleDefeat: () => void;
 }
-
-// Битва: payload-форма для будущей сериализации действий (если потребуется
-// записать историю боя). Сейчас не используется напрямую — оставлено для совместимости.
-export type BattleAction =
-  | { type: "move"; targetIdx: number; to: Coord }
-  | { type: "attack"; targetIdx: number; defenderIdx: number; approachFrom?: Coord }
-  | { type: "shoot"; targetIdx: number; defenderIdx: number }
-  | { type: "wait"; targetIdx: number }
-  | { type: "defend"; targetIdx: number };
-
-// Полная типовая модель store: state + actions. Используется как тип zustand'а
-// и в StateCreator всех slice'ов.
-export type GameStore = GameState & Actions;

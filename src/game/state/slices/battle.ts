@@ -24,7 +24,6 @@ import { logForPlayers, logLine } from "../helpers/log";
 
 export type BattleSlice = Pick<
   Actions,
-  | "battleAct"
   | "battleAttack"
   | "battleShoot"
   | "battleMove"
@@ -56,12 +55,6 @@ export function runAiBattle(get: () => GameStore, set: (patch: Partial<GameStore
 }
 
 export const createBattleSlice: StateCreator<GameStore, [], [], BattleSlice> = (set, get) => ({
-  battleAct: _action => {
-    // Заглушка — действия игрока обрабатывает battle/engine.ts через прямой вызов
-    // конкретных action'ов (battleAttack/battleShoot/...). Это для будущего
-    // расширения: записывать историю боя.
-  },
-
   battleAttack: gate("battleAttack", (attackerId, defenderId, approachTo) => {
     const b = get().battle;
     if (!b) return;
