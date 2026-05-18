@@ -22,12 +22,9 @@ import { useGame } from "../game/store";
 import type { BattleStack, BattleState, Coord } from "../game/types";
 import { useNet } from "../net/netStore";
 import { AnimSpeedToggle } from "./AnimSpeedToggle";
+import { cellCenter, FIELD_H, FIELD_PAD, FIELD_W, HEX_H, HEX_W } from "./battleCanvas/constants";
+import { drawBattle } from "./battleCanvas/drawBattle";
 import { ANIM_SPEED_SCALE, useSettings } from "./settingsStore";
-
-const HEX_W = 56;
-const HEX_H = 48;
-const FIELD_W = HEX_W * BATTLE_W + 40;
-const FIELD_H = HEX_H * BATTLE_H + 40;
 
 // Длительность анимации перемещения стека на одну клетку (octile-метрика).
 const BATTLE_MOVE_MS_PER_TILE = 80;
@@ -202,10 +199,11 @@ export function BattleScreen() {
         if (victim) {
           const adjacent = Math.max(Math.abs(victim.pos.x - act.pos.x), Math.abs(victim.pos.y - act.pos.y)) === 1;
           if (adjacent || didShoot) {
+            const target = cellCenter(victim.pos.x, victim.pos.y);
             lungeAnimRef.current = {
               stackId: act.id,
-              toX: 20 + victim.pos.x * HEX_W + HEX_W / 2,
-              toY: 20 + victim.pos.y * HEX_H + HEX_H / 2,
+              toX: target.cx,
+              toY: target.cy,
               startTs: moveEndTs,
               durationMs: BATTLE_LUNGE_MS * scale,
             };
@@ -300,14 +298,13 @@ export function BattleScreen() {
       const k = t < 0.5 ? t * 2 : (1 - t) * 2;
       const stack = battle?.stacks.find(s => s.id === lunge.stackId);
       if (stack) {
-        const baseX = 20 + stack.pos.x * HEX_W + HEX_W / 2;
-        const baseY = 20 + stack.pos.y * HEX_H + HEX_H / 2;
+        const base = cellCenter(stack.pos.x, stack.pos.y);
         // Подвинуть на 30% к цели на пике.
         const maxOff = 0.3;
         result.lunge = {
           stackId: lunge.stackId,
-          offX: (lunge.toX - baseX) * maxOff * k,
-          offY: (lunge.toY - baseY) * maxOff * k,
+          offX: (lunge.toX - base.cx) * maxOff * k,
+          offY: (lunge.toY - base.cy) * maxOff * k,
         };
       }
     }
@@ -346,8 +343,8 @@ export function BattleScreen() {
   function handleClick(ev: React.MouseEvent) {
     if (!battle || !act) return;
     const rect = canvasRef.current!.getBoundingClientRect();
-    const x = Math.floor((ev.clientX - rect.left - 20) / HEX_W);
-    const y = Math.floor((ev.clientY - rect.top - 20) / HEX_H);
+    const x = Math.floor((ev.clientX - rect.left - FIELD_PAD) / HEX_W);
+    const y = Math.floor((ev.clientY - rect.top - FIELD_PAD) / HEX_H);
     if (x < 0 || x >= BATTLE_W || y < 0 || y >= BATTLE_H) return;
     // Только владелец активного стека (с учётом MP — мой playerId) ходит вручную.
     const myPlayerId = useNet.getState().myPlayerId;
@@ -397,8 +394,8 @@ export function BattleScreen() {
 
   function handleMove(ev: React.MouseEvent) {
     const rect = canvasRef.current!.getBoundingClientRect();
-    const x = Math.floor((ev.clientX - rect.left - 20) / HEX_W);
-    const y = Math.floor((ev.clientY - rect.top - 20) / HEX_H);
+    const x = Math.floor((ev.clientX - rect.left - FIELD_PAD) / HEX_W);
+    const y = Math.floor((ev.clientY - rect.top - FIELD_PAD) / HEX_H);
     if (x < 0 || x >= BATTLE_W || y < 0 || y >= BATTLE_H) {
       setHoverCell(null);
       setHoverClient(null);
@@ -566,193 +563,6 @@ function SpellbookModal({
       </div>
     </div>
   );
-}
-
-function drawBattle(
-  ctx: CanvasRenderingContext2D,
-  battle: ReturnType<typeof useGame.getState>["battle"],
-  hover: Coord | null,
-  visual: {
-    pos: Record<string, Coord>;
-    flash: Record<string, number>;
-    lunge: { stackId: string; offX: number; offY: number } | null;
-  } = { pos: {}, flash: {}, lunge: null },
-) {
-  if (!battle) return;
-  const cw = ctx.canvas.width;
-  const ch = ctx.canvas.height;
-  // Земляной фон с лёгким градиентом сверху вниз.
-  const bgGrad = ctx.createLinearGradient(0, 0, 0, ch);
-  bgGrad.addColorStop(0, "#403628");
-  bgGrad.addColorStop(1, "#2c241a");
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, cw, ch);
-  // Мягкая шахматка через полупрозрачные оверлеи — заметно, но не рябит.
-  for (let y = 0; y < BATTLE_H; y++) {
-    for (let x = 0; x < BATTLE_W; x++) {
-      const px = 20 + x * HEX_W;
-      const py = 20 + y * HEX_H;
-      const isEven = (x + y) % 2 === 0;
-      ctx.fillStyle = isEven ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.06)";
-      ctx.fillRect(px, py, HEX_W, HEX_H);
-      ctx.strokeStyle = "rgba(0,0,0,0.22)";
-      ctx.strokeRect(px + 0.5, py + 0.5, HEX_W - 1, HEX_H - 1);
-    }
-  }
-
-  const act = activeStack(battle);
-
-  // Подсветка доступных клеток для активного.
-  if (act) {
-    const reach = reachable(battle, act);
-    ctx.fillStyle = act.side === "attacker" ? "rgba(95,168,80,0.18)" : "rgba(196,64,48,0.18)";
-    for (const k of reach.keys()) {
-      const [x, y] = k.split(",").map(Number);
-      ctx.fillRect(20 + x * HEX_W, 20 + y * HEX_H, HEX_W, HEX_H);
-    }
-  }
-  // Подсветка зоны hover-стека (если он не активный) — обводкой, чтобы не мешать.
-  const hoverStack = hover ? battle.stacks.find(s => s.count > 0 && s.pos.x === hover.x && s.pos.y === hover.y) : null;
-  if (hoverStack && hoverStack.id !== act?.id) {
-    const reach = reachable(battle, hoverStack);
-    ctx.strokeStyle = hoverStack.side === "attacker" ? "rgba(120,200,110,0.7)" : "rgba(220,110,90,0.7)";
-    ctx.lineWidth = 1.5;
-    for (const k of reach.keys()) {
-      const [x, y] = k.split(",").map(Number);
-      ctx.strokeRect(20 + x * HEX_W + 2, 20 + y * HEX_H + 2, HEX_W - 4, HEX_H - 4);
-    }
-    ctx.lineWidth = 1;
-  }
-
-  // Hover.
-  if (hover) {
-    ctx.strokeStyle = "#ffd966";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(20 + hover.x * HEX_W + 1, 20 + hover.y * HEX_H + 1, HEX_W - 2, HEX_H - 2);
-    ctx.lineWidth = 1;
-  }
-
-  // Препятствия. Рисуем под стэками, чтобы фигурки были поверх.
-  for (const obs of battle.obstacles) {
-    const px = 20 + obs.pos.x * HEX_W;
-    const py = 20 + obs.pos.y * HEX_H;
-    const cx = px + HEX_W / 2;
-    const cy = py + HEX_H / 2;
-    ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.beginPath();
-    ctx.ellipse(cx, cy + 12, 18, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ctx.font = "28px serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#fff";
-    ctx.fillText(obs.icon, cx, cy);
-  }
-
-  // Стэки.
-  for (const s of battle.stacks) {
-    if (s.count <= 0) continue;
-    const unit = UNITS[s.unitId];
-    // Визуальная позиция: интерполированная (sub-tile) или дискретная.
-    const visualCell = visual.pos[s.id] ?? s.pos;
-    let cx = 20 + visualCell.x * HEX_W + HEX_W / 2;
-    let cy = 20 + visualCell.y * HEX_H + HEX_H / 2;
-    // «Выпад» к цели — добавляется поверх позиции, только активному.
-    if (visual.lunge && visual.lunge.stackId === s.id) {
-      cx += visual.lunge.offX;
-      cy += visual.lunge.offY;
-    }
-    const baseColor = s.side === "attacker" ? "#3a7a30" : "#8a3020";
-    // Тень под жетоном.
-    ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.45)";
-    ctx.beginPath();
-    ctx.ellipse(cx, cy + 16, 17, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    // Фоновый круг — радиальный градиент по стороне.
-    const tokenGrad = ctx.createRadialGradient(cx - 6, cy - 6, 0, cx, cy, 19);
-    tokenGrad.addColorStop(0, battleLighten(baseColor, 0.35));
-    tokenGrad.addColorStop(1, battleDarken(baseColor, 0.3));
-    ctx.fillStyle = tokenGrad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 18, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = battleDarken(baseColor, 0.5);
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    // Подсветка активного.
-    if (act && act.id === s.id) {
-      ctx.strokeStyle = "#ffd966";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 20, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.lineWidth = 1;
-    // HP-полоса — для верхнего юнита стека (а не всего стека), иначе на больших
-    // стеках мощный удар почти не двигает полоску.
-    const sideBonus = s.side === "attacker" ? battle.attackerBonus : battle.defenderBonus;
-    const effUnitHp = Math.max(1, unit.hp + sideBonus.hpBonus);
-    const hpPct = Math.max(0, Math.min(1, s.hp / effUnitHp));
-    drawHpBar(ctx, cx - 16, cy - 22, 32, 4, hpPct);
-    // Эмодзи.
-    ctx.font = "24px serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#fff";
-    ctx.fillText(unit.icon, cx, cy - 2);
-    // Число существ.
-    ctx.font = "bold 11px sans-serif";
-    const txt = String(s.count);
-    const tw = ctx.measureText(txt).width;
-    ctx.fillStyle = "rgba(0,0,0,0.78)";
-    ctx.fillRect(cx - tw / 2 - 4, cy + 11, tw + 8, 13);
-    ctx.fillStyle = "#fff";
-    ctx.fillText(txt, cx, cy + 18);
-    // Красный flash при получении урона — поверх жетона. phase=1 в момент удара, → 0.
-    const flashPhase = visual.flash[s.id];
-    if (flashPhase) {
-      ctx.save();
-      ctx.fillStyle = `rgba(255, 64, 48, ${0.55 * flashPhase})`;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 18, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-  }
-}
-
-function drawHpBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, pct: number) {
-  ctx.fillStyle = "rgba(0,0,0,0.65)";
-  ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-  ctx.fillStyle = "#2a2018";
-  ctx.fillRect(x, y, w, h);
-  const color = pct > 0.6 ? "#5fa850" : pct > 0.3 ? "#d4a64a" : "#c44030";
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y, Math.max(0, w * pct), h);
-}
-
-// Локальные helpers для манипуляции цветом в боевом канвасе.
-function battleLighten(hex: string, t: number): string {
-  return mixBattle(hex, [255, 255, 255], t);
-}
-function battleDarken(hex: string, t: number): string {
-  return mixBattle(hex, [0, 0, 0], t);
-}
-function mixBattle(a: string, b: [number, number, number], t: number): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(a);
-  let pa: [number, number, number] = [128, 128, 128];
-  if (m) {
-    const n = parseInt(m[1], 16);
-    pa = [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
-  }
-  const r = Math.round(pa[0] * (1 - t) + b[0] * t);
-  const g = Math.round(pa[1] * (1 - t) + b[1] * t);
-  const bl = Math.round(pa[2] * (1 - t) + b[2] * t);
-  return `rgb(${r}, ${g}, ${bl})`;
 }
 
 function BattleTooltip({
