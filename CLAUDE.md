@@ -67,10 +67,15 @@ ui/                   React-экраны: MainMenu / NewGame / Adventure / Town 
 
 ## Smoke-test
 
-`scripts/smoke.ts` — головная логика без React (генерация карты + автобой). Запуск:
+`scripts/smoke.ts` — головная логика без React: генерация карты + автобой + прогон
+store (startGame / endTurn / buildBuilding). Запуск:
 
 ```bash
-npx esbuild scripts/smoke.ts --bundle --platform=node --format=esm --outfile=/tmp/smoke.mjs && node /tmp/smoke.mjs
+npx esbuild scripts/smoke.ts --bundle --platform=node --format=esm --outfile=./.smoke.mjs --external:zustand --external:zustand/middleware --external:peerjs --external:react --external:react-dom && node ./.smoke.mjs
 ```
 
-Если меняете движок боя или генерацию карты — прогоняйте этот скрипт.
+Bundle лежит рядом с `node_modules` (а не в `/tmp`), потому что `zustand`/`peerjs`/`react`
+оставлены external и Node резолвит их из проектных `node_modules` относительно файла.
+В `/tmp` они бы не нашлись.
+
+Если меняете движок боя, генерацию карты или slices store — прогоняйте этот скрипт.

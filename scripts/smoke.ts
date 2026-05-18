@@ -101,4 +101,96 @@ console.log(
   battle2.stacks.filter(s => s.side === "attacker").map(s => `${UNITS[s.unitId].name}=${s.count}`),
 );
 
+// 4. Store integration. Прогоняем стор через несколько ходов: startGame →
+//    endTurn × N → moveHeroTo. Цель — поймать регрессии в slices (lifecycle /
+//    adventure / town / battle), которые движок battle/engine не покрывает.
+//
+//    Особенности окружения:
+//      - В Node нет localStorage, а zustand persist его дёргает. Мокаем
+//        пустой Storage перед dynamic import store.
+//      - runAiTurn — async и опирается на settingsStore.animSpeed для пауз.
+//        Ставим "instant", чтобы тест не висел секундами.
+//      - Импорт через `await import(...)` — нужен, чтобы мок встал ДО того,
+//        как сам store будет инициализирован (top-level ESM imports hoisted).
+
+(globalThis as { localStorage?: Storage }).localStorage = {
+  length: 0,
+  key: () => null,
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+  clear: () => {},
+} as Storage;
+
+const { useGame } = await import("../src/game/store.ts");
+const { useSettings } = await import("../src/ui/settingsStore.ts");
+useSettings.getState().setAnimSpeed("instant");
+
+useGame.getState().startGame({
+  templateId: "jebus",
+  mapWidth: 30,
+  mapHeight: 30,
+  opponentCount: 1,
+  playerFaction: "castle",
+  playerName: "Тест",
+  seed: 777,
+  difficulty: "normal",
+});
+const s0 = useGame.getState();
+console.log("After startGame:", {
+  phase: s0.phase,
+  players: Object.keys(s0.players).length,
+  heroes: Object.keys(s0.heroes).length,
+  towns: Object.keys(s0.towns).length,
+  map: s0.map ? `${s0.map.width}x${s0.map.height}` : "null",
+});
+
+// Полайн до возврата хода к человеку. AI ходит через setTimeout(0), поэтому
+// после endTurn нужно дать event loop'у прокрутиться.
+async function waitForHumanTurn(maxMs = 5000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const s = useGame.getState();
+    const active = s.players[s.activePlayerId];
+    if (active?.isHuman) return true;
+    if (s.battle || s.winnerId) return true;
+    await new Promise(r => setTimeout(r, 10));
+  }
+  return false;
+}
+
+// 5 ходов: каждый раз сдаём ход → ждём пока ИИ отыграет и передаст обратно.
+for (let i = 0; i < 5; i++) {
+  useGame.getState().endTurn();
+  const ok = await waitForHumanTurn();
+  if (!ok) {
+    console.log(`Turn ${i + 1}: AI didn't yield in time`);
+    break;
+  }
+}
+const s1 = useGame.getState();
+console.log("After 5 endTurn:", {
+  day: s1.day,
+  week: s1.week,
+  activePlayer: s1.activePlayerId,
+  log: s1.log.length,
+  winnerId: s1.winnerId,
+});
+
+// Попробуем построить что-то в первом городе и нанять одного юнита, если ИИ
+// нам что-то оставил. Без assertions — просто чтобы пайплайн action'ов отыграл.
+const sNow = useGame.getState();
+const humanPlayer = Object.values(sNow.players).find(p => p.isHuman);
+const myTown = humanPlayer ? sNow.towns[humanPlayer.townIds[0]] : null;
+if (myTown && !myTown.builtToday) {
+  // Попробуем самое дешёвое из доступных.
+  const builtSet = new Set(myTown.built);
+  // marketplace обычно дешёвый и без prereq.
+  const ok = useGame.getState().buildBuilding(myTown.id, "marketplace");
+  console.log(
+    `buildBuilding(marketplace) → ${ok}, town.built=${myTown.built.length} → ${useGame.getState().towns[myTown.id].built.length}`,
+  );
+  void builtSet;
+}
+
 console.log("=== OK ===");
