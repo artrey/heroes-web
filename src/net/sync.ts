@@ -17,6 +17,7 @@ export const NETWORKED_ACTIONS = [
   "openHeroMeeting",
   "closeHeroMeeting",
   "swapArmySlots",
+  "splitStack",
   "equipFromBackpack",
   "unequipToBackpack",
   "transferArtifact",

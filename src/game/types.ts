@@ -323,6 +323,13 @@ export interface NewGameOptions {
   humanFactions?: Faction[];
 }
 
+// Указатель на конкретный слот армии — у героя или в гарнизоне города. Используется
+// действием splitStack, чтобы единообразно описать «откуда → куда» при разделении
+// и слиянии отрядов.
+export type ArmySlotRef =
+  | { kind: "hero"; heroId: string; slot: number }
+  | { kind: "garrison"; townId: string; slot: number };
+
 // Запись в журнале приключений. playerId === undefined → запись «глобальная»
 // (новый день, конец игры) и видна всем. Иначе UI показывает её только
 // игроку с этим id — чтобы не «подсматривать» за чужими ходами.

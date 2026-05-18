@@ -24,6 +24,7 @@ import { rollSpellsForGuildLevel } from "./data/spells";
 import { FACTION_UNIT_ORDER, getUnit, UNITS } from "./data/units";
 import { generateMap } from "./map/generate";
 import type {
+  ArmySlotRef,
   ArtifactSlot,
   BattleState,
   Coord,
@@ -168,6 +169,9 @@ interface Actions {
   openHeroMeeting: (otherHeroId: string) => boolean | undefined;
   closeHeroMeeting: () => void;
   swapArmySlots: (heroIdA: string, slotA: number, heroIdB: string, slotB: number) => void;
+  // Разделить/перенести часть стека between hero ↔ hero ↔ garrison.
+  // target слот может быть занят тем же юнитом (тогда merge) или пустым (новый стек).
+  splitStack: (from: ArmySlotRef, to: ArmySlotRef, count: number) => void;
   equipFromBackpack: (heroId: string, backpackIdx: number) => void;
   unequipToBackpack: (heroId: string, slot: ArtifactSlot) => void;
   transferArtifact: (
@@ -811,13 +815,21 @@ export const useGame = create<GameState & Actions>()(
         if (!a || !b) return;
         if (a.ownerId !== b.ownerId) return;
         if (a.ownerId !== s.activePlayerId) return;
-        // Один и тот же герой, разные слоты — внутренний swap.
-        // Разные герои — swap между армиями (включая мердж одинаковых стеков).
+        // Один и тот же герой, разные слоты — внутренний swap. Одинаковые юниты
+        // сливаются (как и при обмене между разными героями), иначе игрок
+        // вынужден был бы делать лишний шаг через splitStack.
         if (heroIdA === heroIdB) {
           const army = a.army.slice();
-          const tmp = army[slotA];
-          army[slotA] = army[slotB];
-          army[slotB] = tmp;
+          const stA = army[slotA];
+          const stB = army[slotB];
+          if (stA && stB && stA.unitId === stB.unitId) {
+            army[slotB] = { unitId: stB.unitId, count: stB.count + stA.count };
+            army.splice(slotA, 1);
+          } else {
+            const tmp = army[slotA];
+            army[slotA] = army[slotB];
+            army[slotB] = tmp;
+          }
           // Очистка undefined-хвоста: лишних дыр в массиве не остаётся.
           const clean = army.filter(Boolean);
           set({ heroes: { ...s.heroes, [heroIdA]: { ...a, army: clean } } });
@@ -851,6 +863,73 @@ export const useGame = create<GameState & Actions>()(
             [heroIdB]: { ...b, army: newB.filter(Boolean) },
           },
         });
+      }),
+
+      splitStack: gate("splitStack", (from: ArmySlotRef, to: ArmySlotRef, count: number) => {
+        const s = get();
+        // Локально читаем массив и владельца по ссылке.
+        function read(ref: ArmySlotRef): { army: UnitStack[]; ownerId: string | null } | null {
+          if (ref.kind === "hero") {
+            const h = s.heroes[ref.heroId];
+            if (!h) return null;
+            return { army: h.army, ownerId: h.ownerId };
+          }
+          const t = s.towns[ref.townId];
+          if (!t) return null;
+          return { army: t.garrison, ownerId: t.ownerId };
+        }
+        const A = read(from);
+        const B = read(to);
+        if (!A || !B) return;
+        // Действовать может только активный игрок и только над своими отрядами.
+        if (A.ownerId !== s.activePlayerId || B.ownerId !== s.activePlayerId) return;
+        const src = A.army[from.slot];
+        if (!src) return;
+        if (count < 1 || count > src.count) return;
+        const dst = B.army[to.slot];
+        if (dst && dst.unitId !== src.unitId) return; // несовместимые юниты
+        const sameContainer =
+          (from.kind === "hero" && to.kind === "hero" && from.heroId === to.heroId) ||
+          (from.kind === "garrison" && to.kind === "garrison" && from.townId === to.townId);
+        if (sameContainer && from.slot === to.slot) return;
+        // Если переносим весь стек в пустой слот того же контейнера — это просто
+        // перестановка; используется swapArmySlots, splitStack игнорим как no-op.
+        if (sameContainer && !dst && count === src.count) return;
+
+        const fromArmy = A.army.map(st => ({ ...st }));
+        const toArmy = sameContainer ? fromArmy : B.army.map(st => ({ ...st }));
+        const srcCopy = fromArmy[from.slot];
+        if (dst) {
+          // Merge в существующий слот того же юнита.
+          toArmy[to.slot] = { unitId: dst.unitId, count: dst.count + count };
+        } else {
+          // Append (массивы армии плотные — точный visual index слота не важен,
+          // UI отрисует юнит в первом свободном слоте).
+          if (toArmy.length >= 7) return;
+          toArmy.push({ unitId: srcCopy.unitId, count });
+        }
+        if (count >= srcCopy.count) {
+          fromArmy.splice(from.slot, 1);
+        } else {
+          srcCopy.count -= count;
+        }
+
+        const newHeroes = { ...s.heroes };
+        const newTowns = { ...s.towns };
+        function write(ref: ArmySlotRef, army: UnitStack[]) {
+          if (ref.kind === "hero") {
+            newHeroes[ref.heroId] = { ...s.heroes[ref.heroId], army };
+          } else {
+            newTowns[ref.townId] = { ...s.towns[ref.townId], garrison: army };
+          }
+        }
+        if (sameContainer) {
+          write(from, fromArmy);
+        } else {
+          write(from, fromArmy);
+          write(to, toArmy);
+        }
+        set({ heroes: newHeroes, towns: newTowns });
       }),
 
       equipFromBackpack: gate("equipFromBackpack", (heroId: string, backpackIdx: number) => {

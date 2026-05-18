@@ -5,7 +5,7 @@ import { FACTION_META } from "../game/data/factions";
 import { getSpell } from "../game/data/spells";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
-import type { ArtifactSlot } from "../game/types";
+import type { ArmySlotRef, ArtifactSlot, UnitStack } from "../game/types";
 import { ARTIFACT_SLOT_ORDER } from "../game/types";
 import {
   getEffectiveKnowledge,
@@ -16,6 +16,15 @@ import {
 } from "../game/utils/heroBonus";
 import { xpToNextLevel } from "../game/utils/leveling";
 import { useMyPlayerId } from "../net/netStore";
+import { SplitDialog } from "./SplitDialog";
+
+// Найти первый пустой слот в армии (0..6). null — если все заняты.
+export function findFirstEmptySlot(army: UnitStack[]): number | null {
+  for (let i = 0; i < 7; i++) {
+    if (!army[i]) return i;
+  }
+  return null;
+}
 
 type Selected =
   | { kind: "army"; slot: number }
@@ -28,6 +37,7 @@ export function HeroScreen() {
   const hero = useGame(s => (id ? s.heroes[id] : null));
   const close = useGame(s => s.closeHero);
   const swapArmySlots = useGame(s => s.swapArmySlots);
+  const splitStack = useGame(s => s.splitStack);
   const equipFromBackpack = useGame(s => s.equipFromBackpack);
   const unequipToBackpack = useGame(s => s.unequipToBackpack);
   const activePlayerId = useGame(s => s.activePlayerId);
@@ -38,6 +48,7 @@ export function HeroScreen() {
     : hero?.ownerId === activePlayerId;
 
   const [selected, setSelected] = useState<Selected>(null);
+  const [splitDialog, setSplitDialog] = useState<{ from: ArmySlotRef; to: ArmySlotRef } | null>(null);
 
   if (!hero) return null;
   const bonus = getHeroBonus(hero);
@@ -46,8 +57,36 @@ export function HeroScreen() {
   const effKnowledge = getEffectiveKnowledge(hero);
   const effMaxMana = getEffectiveMaxMana(hero);
 
-  function clickArmy(slot: number) {
+  function clickArmy(slot: number, ev?: React.MouseEvent) {
     if (!hero || !canAct) return;
+    // Shift+click — открыть диалог разделения. Если source ещё не выбран,
+    // источником становится этот же слот, целью — первый пустой слот того же героя.
+    if (ev?.shiftKey) {
+      if (!selected) {
+        const stack = hero.army[slot];
+        if (!stack || stack.count < 2) return;
+        const empty = findFirstEmptySlot(hero.army);
+        if (empty == null) return;
+        setSplitDialog({
+          from: { kind: "hero", heroId: hero.id, slot },
+          to: { kind: "hero", heroId: hero.id, slot: empty },
+        });
+        return;
+      }
+      if (selected.kind === "army") {
+        const srcStack = hero.army[selected.slot];
+        if (!srcStack) {
+          setSelected(null);
+          return;
+        }
+        setSplitDialog({
+          from: { kind: "hero", heroId: hero.id, slot: selected.slot },
+          to: { kind: "hero", heroId: hero.id, slot },
+        });
+        setSelected(null);
+        return;
+      }
+    }
     if (!selected) {
       if (hero.army[slot]) setSelected({ kind: "army", slot });
       return;
@@ -226,7 +265,11 @@ export function HeroScreen() {
               const isSel = selected?.kind === "army" && selected.slot === slot;
               if (!stack)
                 return (
-                  <div key={slot} className={`army-slot empty ${isSel ? "sel" : ""}`} onClick={() => clickArmy(slot)}>
+                  <div
+                    key={slot}
+                    className={`army-slot empty ${isSel ? "sel" : ""}`}
+                    onClick={ev => clickArmy(slot, ev)}
+                  >
                     —
                   </div>
                 );
@@ -235,7 +278,7 @@ export function HeroScreen() {
                 <div
                   key={slot}
                   className={`army-slot ${isSel ? "sel" : ""}`}
-                  onClick={() => clickArmy(slot)}
+                  onClick={ev => clickArmy(slot, ev)}
                   title={`${u.name}: атк ${u.attack + bonus.attack}, защ ${u.defense + bonus.defense}, HP ${u.hp + bonus.hpBonus}, скор ${u.speed + bonus.speed}`}
                 >
                   <span className="icon">{u.icon}</span>
@@ -317,10 +360,29 @@ export function HeroScreen() {
           <div className="hero-hint">
             {selected
               ? "Клик на пустой слот того же типа — экипировать; клик в рюкзак — снять."
-              : "Клик по слоту — выбрать. Армия меняется внутри героя."}
+              : "Клик по слоту — выбрать. Shift+клик — разделить отряд."}
           </div>
         </div>
       </div>
+      {splitDialog &&
+        (() => {
+          const srcStack = hero.army[splitDialog.from.slot];
+          if (!srcStack) return null;
+          const dstStack = hero.army[splitDialog.to.slot] ?? null;
+          return (
+            <SplitDialog
+              fromUnitId={srcStack.unitId}
+              fromCount={srcStack.count}
+              toUnitId={dstStack?.unitId ?? null}
+              toCount={dstStack?.count ?? 0}
+              onCancel={() => setSplitDialog(null)}
+              onConfirm={count => {
+                splitStack(splitDialog.from, splitDialog.to, count);
+                setSplitDialog(null);
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }

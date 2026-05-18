@@ -5,7 +5,7 @@ import { FACTION_META } from "../game/data/factions";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import { ARTIFACT_SLOT_ORDER } from "../game/types";
-import type { ArtifactSlot, Hero } from "../game/types";
+import type { ArmySlotRef, ArtifactSlot, Hero } from "../game/types";
 import {
   getEffectiveKnowledge,
   getEffectiveMaxMana,
@@ -13,6 +13,8 @@ import {
   getHeroBonus,
 } from "../game/utils/heroBonus";
 import { useMyPlayerId } from "../net/netStore";
+import { findFirstEmptySlot } from "./HeroScreen";
+import { SplitDialog } from "./SplitDialog";
 
 type Selected =
   | { kind: "army"; heroId: string; slot: number }
@@ -25,6 +27,7 @@ export function HeroMeetingScreen() {
   const a = useGame(s => (ids ? s.heroes[ids[0]] : null));
   const b = useGame(s => (ids ? s.heroes[ids[1]] : null));
   const swapArmySlots = useGame(s => s.swapArmySlots);
+  const splitStack = useGame(s => s.splitStack);
   const equipFromBackpack = useGame(s => s.equipFromBackpack);
   const unequipToBackpack = useGame(s => s.unequipToBackpack);
   const transferArtifact = useGame(s => s.transferArtifact);
@@ -38,11 +41,42 @@ export function HeroMeetingScreen() {
   const canAct = myPlayerId ? ownerId === myPlayerId && activePlayerId === myPlayerId : ownerId === activePlayerId;
 
   const [selected, setSelected] = useState<Selected>(null);
+  const [splitDialog, setSplitDialog] = useState<{ from: ArmySlotRef; to: ArmySlotRef } | null>(null);
 
   if (!a || !b) return null;
 
-  function clickArmy(hero: Hero, slot: number) {
+  function clickArmy(hero: Hero, slot: number, ev?: React.MouseEvent) {
     if (!canAct) return;
+    // Shift+click — открыть split-dialog.
+    if (ev?.shiftKey) {
+      if (!selected) {
+        const stack = hero.army[slot];
+        if (!stack || stack.count < 2) return;
+        // Цель по умолчанию — первый пустой слот другого героя (типичный обмен).
+        const otherHero = hero.id === a!.id ? b! : a!;
+        const empty = findFirstEmptySlot(otherHero.army);
+        if (empty == null) return;
+        setSplitDialog({
+          from: { kind: "hero", heroId: hero.id, slot },
+          to: { kind: "hero", heroId: otherHero.id, slot: empty },
+        });
+        return;
+      }
+      if (selected.kind === "army") {
+        const srcHero = selected.heroId === a!.id ? a! : b!;
+        const srcStack = srcHero.army[selected.slot];
+        if (!srcStack) {
+          setSelected(null);
+          return;
+        }
+        setSplitDialog({
+          from: { kind: "hero", heroId: srcHero.id, slot: selected.slot },
+          to: { kind: "hero", heroId: hero.id, slot },
+        });
+        setSelected(null);
+        return;
+      }
+    }
     if (!selected) {
       if (hero.army[slot]) setSelected({ kind: "army", heroId: hero.id, slot });
       return;
@@ -127,7 +161,7 @@ export function HeroMeetingScreen() {
         <HeroPanel
           hero={a}
           selected={selected}
-          onArmy={s => clickArmy(a, s)}
+          onArmy={(s, ev) => clickArmy(a, s, ev)}
           onEquipped={s => clickEquipped(a, s)}
           onBackpack={i => clickBackpack(a, i)}
         />
@@ -165,7 +199,7 @@ export function HeroMeetingScreen() {
         <HeroPanel
           hero={b}
           selected={selected}
-          onArmy={s => clickArmy(b, s)}
+          onArmy={(s, ev) => clickArmy(b, s, ev)}
           onEquipped={s => clickEquipped(b, s)}
           onBackpack={i => clickBackpack(b, i)}
         />
@@ -173,9 +207,32 @@ export function HeroMeetingScreen() {
 
       <div className="meeting-hint">
         {selected
-          ? "Кликните по слоту/рюкзаку: в своём герое — экипировать/снять; в другом — передать в его рюкзак."
-          : "Кликните по существу или артефакту, чтобы выбрать для обмена."}
+          ? "Кликните по слоту/рюкзаку: в своём герое — экипировать/снять; в другом — передать."
+          : "Клик — выбрать. Shift+клик — разделить отряд."}
       </div>
+      {splitDialog &&
+        (() => {
+          // В этом экране оба конца — только герои (гарнизон сюда не относится).
+          if (splitDialog.from.kind !== "hero" || splitDialog.to.kind !== "hero") return null;
+          const srcHero = splitDialog.from.heroId === a!.id ? a! : b!;
+          const dstHero = splitDialog.to.heroId === a!.id ? a! : b!;
+          const srcStack = srcHero.army[splitDialog.from.slot];
+          if (!srcStack) return null;
+          const dstStack = dstHero.army[splitDialog.to.slot] ?? null;
+          return (
+            <SplitDialog
+              fromUnitId={srcStack.unitId}
+              fromCount={srcStack.count}
+              toUnitId={dstStack?.unitId ?? null}
+              toCount={dstStack?.count ?? 0}
+              onCancel={() => setSplitDialog(null)}
+              onConfirm={count => {
+                splitStack(splitDialog.from, splitDialog.to, count);
+                setSplitDialog(null);
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }
@@ -189,7 +246,7 @@ function HeroPanel({
 }: {
   hero: Hero;
   selected: Selected;
-  onArmy: (slot: number) => void;
+  onArmy: (slot: number, ev?: React.MouseEvent) => void;
   onEquipped: (slot: ArtifactSlot) => void;
   onBackpack: (idx: number) => void;
 }) {
@@ -244,13 +301,13 @@ function HeroPanel({
           const isSel = selected?.kind === "army" && selected.heroId === hero.id && selected.slot === slot;
           if (!stack)
             return (
-              <div key={slot} className={`army-slot empty ${isSel ? "sel" : ""}`} onClick={() => onArmy(slot)}>
+              <div key={slot} className={`army-slot empty ${isSel ? "sel" : ""}`} onClick={ev => onArmy(slot, ev)}>
                 —
               </div>
             );
           const u = UNITS[stack.unitId];
           return (
-            <div key={slot} className={`army-slot ${isSel ? "sel" : ""}`} onClick={() => onArmy(slot)}>
+            <div key={slot} className={`army-slot ${isSel ? "sel" : ""}`} onClick={ev => onArmy(slot, ev)}>
               <span className="icon">{u.icon}</span>
               <span>{stack.count}</span>
             </div>

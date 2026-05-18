@@ -7,10 +7,12 @@ import { reverseRate } from "../game/data/marketRates";
 import { getSpell } from "../game/data/spells";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
-import type { Faction, Resource, ResourceBag } from "../game/types";
+import type { ArmySlotRef, Faction, Resource, ResourceBag } from "../game/types";
 import { dailyIncomeFor } from "../game/utils/income";
 import { canAfford, RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { useMyPlayerId } from "../net/netStore";
+import { findFirstEmptySlot } from "./HeroScreen";
+import { SplitDialog } from "./SplitDialog";
 
 const HERO_HIRE_GOLD = 2500;
 
@@ -26,8 +28,10 @@ export function TownScreen() {
   const garrisonToHero = useGame(s => s.garrisonToHero);
   const heroes = useGame(s => s.heroes);
   const heroToGarrison = useGame(s => s.heroToGarrison);
+  const splitStack = useGame(s => s.splitStack);
 
   const [openModal, setOpenModal] = useState<"tavern" | "marketplace" | "mageGuild" | null>(null);
+  const [splitDialog, setSplitDialog] = useState<{ from: ArmySlotRef; to: ArmySlotRef } | null>(null);
   const activePlayerId = useGame(s => s.activePlayerId);
   const myPlayerId = useMyPlayerId();
   // canAct: я владелец города И сейчас мой ход. В SP myPlayerId=null — используем
@@ -220,7 +224,14 @@ export function TownScreen() {
             );
           })}
 
-          <h3 style={{ color: "var(--gold)", marginTop: 16 }}>Гарнизон</h3>
+          <h3 style={{ color: "var(--gold)", marginTop: 16 }}>
+            Гарнизон{" "}
+            <span style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: "normal" }}>
+              {heroHere
+                ? "· клик — передать герою, Shift+клик — разделить внутри гарнизона"
+                : "· Shift+клик — разделить"}
+            </span>
+          </h3>
           <div style={{ display: "flex", gap: 4 }}>
             {Array.from({ length: 7 }).map((_, idx) => {
               const stack = town.garrison[idx];
@@ -235,9 +246,30 @@ export function TownScreen() {
                 <div
                   key={idx}
                   className="army-slot"
-                  style={{ flex: 1, cursor: heroHere && canAct ? "pointer" : "default" }}
-                  onClick={() => heroHere && canAct && garrisonToHero(town.id, idx)}
-                  title={heroHere ? (canAct ? "Передать герою" : "Не ваш ход") : ""}
+                  style={{ flex: 1, cursor: canAct ? "pointer" : "default" }}
+                  onClick={ev => {
+                    if (!canAct) return;
+                    // Shift+клик — деление ВНУТРИ гарнизона (не переносит в героя).
+                    if (ev.shiftKey) {
+                      if (stack.count < 2) return;
+                      const empty = findFirstEmptySlot(town.garrison);
+                      if (empty == null) return;
+                      setSplitDialog({
+                        from: { kind: "garrison", townId: town.id, slot: idx },
+                        to: { kind: "garrison", townId: town.id, slot: empty },
+                      });
+                      return;
+                    }
+                    // Обычный клик — передать весь стек герою (если он стоит в городе).
+                    if (heroHere) garrisonToHero(town.id, idx);
+                  }}
+                  title={
+                    canAct
+                      ? heroHere
+                        ? "Клик — передать герою · Shift+клик — разделить внутри гарнизона"
+                        : "Shift+клик — разделить (герой не в городе)"
+                      : "Не ваш ход"
+                  }
                 >
                   <span className="icon">{u.icon}</span>
                   <span>{stack.count}</span>
@@ -268,8 +300,22 @@ export function TownScreen() {
                       key={idx}
                       className="army-slot"
                       style={{ flex: 1, cursor: canAct ? "pointer" : "default" }}
-                      onClick={() => canAct && heroToGarrison(heroHere.id, idx)}
-                      title={canAct ? "В гарнизон" : "Не ваш ход"}
+                      onClick={ev => {
+                        if (!canAct) return;
+                        // Shift+клик — деление ВНУТРИ армии героя (не переносит в гарнизон).
+                        if (ev.shiftKey) {
+                          if (stack.count < 2) return;
+                          const empty = findFirstEmptySlot(heroHere.army);
+                          if (empty == null) return;
+                          setSplitDialog({
+                            from: { kind: "hero", heroId: heroHere.id, slot: idx },
+                            to: { kind: "hero", heroId: heroHere.id, slot: empty },
+                          });
+                          return;
+                        }
+                        heroToGarrison(heroHere.id, idx);
+                      }}
+                      title={canAct ? "Клик — в гарнизон · Shift+клик — разделить в армии героя" : "Не ваш ход"}
                     >
                       <span className="icon">{u.icon}</span>
                       <span>{stack.count}</span>
@@ -307,6 +353,29 @@ export function TownScreen() {
           onClose={() => setOpenModal(null)}
         />
       )}
+      {splitDialog &&
+        (() => {
+          // Достаём source/target стеки из текущего state (гарнизона или героя).
+          const srcArmy = splitDialog.from.kind === "hero" ? heroes[splitDialog.from.heroId]?.army : town.garrison;
+          const dstArmy = splitDialog.to.kind === "hero" ? heroes[splitDialog.to.heroId]?.army : town.garrison;
+          if (!srcArmy || !dstArmy) return null;
+          const srcStack = srcArmy[splitDialog.from.slot];
+          if (!srcStack) return null;
+          const dstStack = dstArmy[splitDialog.to.slot] ?? null;
+          return (
+            <SplitDialog
+              fromUnitId={srcStack.unitId}
+              fromCount={srcStack.count}
+              toUnitId={dstStack?.unitId ?? null}
+              toCount={dstStack?.count ?? 0}
+              onCancel={() => setSplitDialog(null)}
+              onConfirm={count => {
+                splitStack(splitDialog.from, splitDialog.to, count);
+                setSplitDialog(null);
+              }}
+            />
+          );
+        })()}
     </div>
   );
 }
