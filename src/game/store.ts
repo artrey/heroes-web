@@ -273,8 +273,24 @@ export const useGame = create<GameState & Actions>()(
             learnedSpells: [],
           };
           towns[tid] = town;
-          // Положим объект-города на карту.
-          map.tiles[town.pos.y * map.width + town.pos.x].objectId = tid;
+          // Положим объект-города на карту. Замок занимает плитку 3×2 (ширина×высота)
+          // с entry в центральной нижней клетке: на все 6 клеток ставим
+          // objectId=townId (UI ловит клик по любой части города и резолвит в
+          // entry-tile), а 5 не-entry клеток помечаем непроходимыми (passable=false).
+          // map.objects содержит ОДИН объект с pos=entry — drawMap рисует одну
+          // большую плитку.
+          for (let dy = -1; dy <= 0; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const fx = town.pos.x + dx;
+              const fy = town.pos.y + dy;
+              if (fx < 0 || fy < 0 || fx >= map.width || fy >= map.height) continue;
+              const tIdx = fy * map.width + fx;
+              map.tiles[tIdx].objectId = tid;
+              if (!(dx === 0 && dy === 0)) {
+                map.tiles[tIdx].passable = false;
+              }
+            }
+          }
           map.objects[tid] = {
             id: tid,
             kind: "dwelling",

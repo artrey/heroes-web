@@ -68,11 +68,15 @@ export function generateMap(input: GenInput): GenOutput {
   }
 
   // 2) Точки старта игроков. Равномерно разнесены по карте.
+  // Замок занимает плитку 3×3, entry — центральная нижняя клетка (она проходима
+  // и интерактивна). Остальные 8 клеток помечаем непроходимыми сразу здесь,
+  // чтобы последующая генерация (obstacles/resources/heroPos) их не использовала.
   const playerStarts: GenOutput["playerStarts"] = [];
   const placedTowns: Coord[] = [];
   const minTownDist = Math.floor(Math.min(W, H) / 2.2);
   for (let i = 0; i < input.playerCount; i++) {
-    // Углы карты для асимметричного размещения.
+    // Углы карты для асимметричного размещения. Отступ от верха карты не меньше 2,
+    // потому что footprint простирается на 2 клетки ВВЕРХ от entry.
     const angle = (i / input.playerCount) * Math.PI * 2 + 0.4;
     const rx = Math.cos(angle) * Math.min(W, H) * 0.35;
     const ry = Math.sin(angle) * Math.min(W, H) * 0.35;
@@ -80,7 +84,8 @@ export function generateMap(input: GenInput): GenOutput {
     const ty = Math.max(3, Math.min(H - 4, Math.floor(H / 2 + ry)));
     const pos: Coord = { x: tx, y: ty };
     placedTowns.push(pos);
-    // Герой рядом с городом — на свободной клетке.
+    markTownFootprint(tiles, W, H, pos);
+    // Герой рядом с городом — на свободной клетке (с учётом непроходимого футпринта).
     const heroPos = findOpenAround(tiles, W, H, pos, 2) ?? pos;
     playerStarts.push({ townPos: pos, heroPos, faction: input.factions[i] });
     void minTownDist;
@@ -244,6 +249,21 @@ const MINE_ICONS: Record<Resource, string> = {
   crystal: "🔮",
   gems: "💠",
 };
+
+// Помечает 5 соседних клеток замка непроходимыми. Замок занимает плитку 3×2:
+// 3 в ширину, 2 в высоту. Entry-tile (центральный нижний) — единственная
+// проходимая клетка плитки, на неё герой встаёт при подходе к городу.
+function markTownFootprint(tiles: Tile[], W: number, H: number, entry: Coord): void {
+  for (let dy = -1; dy <= 0; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const fx = entry.x + dx;
+      const fy = entry.y + dy;
+      if (fx < 0 || fy < 0 || fx >= W || fy >= H) continue;
+      tiles[fy * W + fx].passable = false;
+    }
+  }
+}
 
 function findOpenAround(tiles: Tile[], W: number, H: number, c: Coord, radius: number): Coord | null {
   for (let r = 1; r <= radius; r++) {

@@ -404,7 +404,17 @@ export function AdventureScreen() {
       setHoverPath(null);
       return;
     }
-    const path = findPath(map!, hero.pos, t, {
+    // Если hover пришёлся на не-entry клетку города — считаем путь до entry.
+    // Сама клетка непроходима (passable=false), путь к ней бы не построился.
+    let target = t;
+    const hoverTileData = map!.tiles[t.y * map!.width + t.x];
+    if (hoverTileData.objectId) {
+      const obj = map!.objects[hoverTileData.objectId];
+      if (obj?.kind === "dwelling") {
+        target = obj.pos;
+      }
+    }
+    const path = findPath(map!, hero.pos, target, {
       revealed,
       dangerCells: danger.cells,
       dangerSources: danger.sources,
@@ -445,19 +455,33 @@ export function AdventureScreen() {
     }
 
     if (tile.objectId) {
-      // Клик по своему городу — открыть его независимо от того, чей сейчас ход.
-      const tw = towns[tile.objectId];
-      if (tw && tw.ownerId === myPlayer?.id) {
-        const heroOnTown = selectedHero && selectedHero.pos.x === tw.pos.x && selectedHero.pos.y === tw.pos.y;
-        if (canMoveSelected && !heroOnTown) {
-          if (selectedHeroId) {
-            recordPlannedPath(selectedHeroId, t);
-            moveHeroTo(t, selectedHeroId);
+      const obj = map!.objects[tile.objectId];
+      // Город теперь занимает 3×3 клетки — все 9 имеют objectId=townId. Любой
+      // клик по городу резолвим в его entry-tile (центральная нижняя клетка):
+      // и для своего города (зайти/подойти), и для чужого (штурм).
+      if (obj?.kind === "dwelling") {
+        const tw = towns[obj.id];
+        if (tw) {
+          const target = tw.pos;
+          const heroOnTown = selectedHero && selectedHero.pos.x === target.x && selectedHero.pos.y === target.y;
+          if (tw.ownerId === myPlayer?.id) {
+            if (canMoveSelected && !heroOnTown) {
+              if (selectedHeroId) {
+                recordPlannedPath(selectedHeroId, target);
+                moveHeroTo(target, selectedHeroId);
+              }
+              return;
+            }
+            openTown(tw.id);
+            return;
+          }
+          // Чужой/нейтральный город — направляем героя к entry.
+          if (canMoveSelected && selectedHeroId) {
+            recordPlannedPath(selectedHeroId, target);
+            moveHeroTo(target, selectedHeroId);
           }
           return;
         }
-        openTown(tw.id);
-        return;
       }
     }
     // Любая другая клетка — двигаем выбранного героя.
@@ -788,11 +812,17 @@ function drawMap(
     const cx = sx + TILE_SIZE / 2;
     const cy = sy + TILE_SIZE / 2;
     if (obj.kind === "dwelling") {
+      // Замок 3×2: 3 клетки в ширину, 2 в высоту. Entry (obj.pos) — центральная
+      // нижняя клетка. Рисуем одну большую плитку, в центре — эмодзи фракции.
       const tw = towns[obj.id];
       const ownerColor = tw?.ownerId ? (players[tw.ownerId]?.color ?? "#888") : "#888";
-      drawBuildingPlaque(ctx, sx, sy, ownerColor);
-      drawEmoji(ctx, obj.icon, cx, cy, 24);
-      if (tw?.builtToday) drawBuiltTodayBadge(ctx, sx, sy);
+      const topX = (obj.pos.x - 1) * TILE_SIZE - camera.x;
+      const topY = (obj.pos.y - 1) * TILE_SIZE - camera.y;
+      const w = 3 * TILE_SIZE;
+      const h = 2 * TILE_SIZE;
+      drawTownPlaque(ctx, topX, topY, w, h, ownerColor);
+      drawEmoji(ctx, obj.icon, topX + w / 2, topY + h / 2 - 2, 48);
+      if (tw?.builtToday) drawBuiltTodayBadge(ctx, topX + w - TILE_SIZE, topY);
     } else if (obj.kind === "mine") {
       if (obj.ownerId) {
         drawBuildingPlaque(ctx, sx, sy, players[obj.ownerId]?.color ?? "#888");
@@ -934,6 +964,48 @@ function drawHeroToken(ctx: CanvasRenderingContext2D, cx: number, cy: number, co
     ctx.arc(cx, cy, r + 1, 0, Math.PI * 2);
     ctx.stroke();
   }
+  ctx.lineWidth = 1;
+}
+
+// Большая плашка замка (по умолчанию 3×2 клетки). Плашка полностью покрывает
+// все клетки футпринта (без внутреннего pad'а), чтобы сетка тайлов не «выпирала»
+// из-под краёв. Сверху — зубцы стены (внутри плитки), снизу — тень, под entry-tile
+// золотая полоска как маркер точки входа.
+function drawTownPlaque(ctx: CanvasRenderingContext2D, sx: number, sy: number, w: number, h: number, color: string) {
+  // Сначала полностью перекрываем фон под плиткой, чтобы сетка `0,0,0,0.18`,
+  // нанесённая drawMap'ом на каждый тайл, не просвечивала по краям.
+  ctx.fillStyle = "#0a0806";
+  ctx.fillRect(sx, sy, w, h);
+  // Корпус — крепостная стена.
+  const grad = ctx.createLinearGradient(sx, sy, sx, sy + h);
+  grad.addColorStop(0, lighten(color, 0.3));
+  grad.addColorStop(0.55, color);
+  grad.addColorStop(1, darken(color, 0.4));
+  ctx.fillStyle = grad;
+  ctx.fillRect(sx, sy, w, h);
+  // Зубцы стены — ВНУТРИ плитки, чтобы не торчали вверх в чужой тайл.
+  ctx.fillStyle = darken(color, 0.45);
+  const merlonCount = 4;
+  const merlonW = Math.floor(w / 10);
+  const gap = Math.floor(w / 18);
+  const startX = sx + (w - (merlonCount * merlonW + (merlonCount - 1) * gap)) / 2;
+  for (let i = 0; i < merlonCount; i++) {
+    ctx.fillRect(startX + i * (merlonW + gap), sy + 3, merlonW, 6);
+  }
+  // Тень у основания (внутри плитки).
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillRect(sx + 4, sy + h - 5, w - 8, 3);
+  // Внешняя обводка по всему контуру плитки.
+  ctx.strokeStyle = darken(color, 0.6);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(sx + 1, sy + 1, w - 2, h - 2);
+  // Подчёркиваем нижний (entry) тайл лёгкой золотой полоской — точка входа.
+  ctx.strokeStyle = "rgba(212, 166, 74, 0.9)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(sx + w / 2 - TILE_SIZE / 2 + 4, sy + h - 3);
+  ctx.lineTo(sx + w / 2 + TILE_SIZE / 2 - 4, sy + h - 3);
+  ctx.stroke();
   ctx.lineWidth = 1;
 }
 
