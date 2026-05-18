@@ -44,26 +44,58 @@
 
 ## Сохранения и миграции
 
-**Игра в релизе.** Любое изменение формата `GameState` или вложенных типов должно сопровождаться миграцией в `persist`-конфиге `src/game/store.ts`. Не бампать `version` без `migrate` — у игроков уже есть сохранения, ронять их при апдейте недопустимо.
+**Игра в релизе.** Любое изменение формата `GameState` или вложенных типов должно сопровождаться миграцией в `src/game/state/persist.ts`. Не бампать `version` без `migrate` — у игроков уже есть сохранения, ронять их при апдейте недопустимо.
 
 Алгоритм при изменении формата:
 
-1. Поднять `version` на 1.
+1. Поднять `version` на 1 в `src/game/state/persist.ts`.
 2. В функции `migrate(persisted, fromVersion)` добавить ветку `if (fromVersion < <newVersion>) { ... }`. В ней проставить дефолты для новых полей, переименовать/перестроить существующие.
 3. Если поле/состояние объективно невозможно восстановить (например, активный бой при крупной правке `BattleState`) — допустимо обнулить только `battle`/`phase`, но не весь сейв.
+4. Если новое поле UI-локальное (не должно идти по сети) — добавить его в `LOCAL_STATE_FIELDS` в `src/net/registry.ts`. Иначе оно автоматически попадёт в `snapshotGameState` и улетит клиентам по `broadcastState` — это «безопасный по умолчанию» контракт.
 
 ## Архитектура (`src/`)
 
 ```
 game/
-  types.ts            все типы игровой модели
-  store.ts            zustand store + действия + ИИ карты
-  data/               справочники: units, buildings, heroes, templates
-  utils/              rng, A*, ресурсы, id
-  map/generate.ts     процедурная генерация
-  battle/engine.ts    пошаговый бой (поле 15×11, инициатива)
-ui/                   React-экраны: MainMenu / NewGame / Adventure / Town / Battle / GameOver
+  types.ts            все типы игровой модели (включая MapObject — discriminated union по kind)
+  store.ts            тонкая композиция slice'ов через zustand persist
+  state/              состояние и действия:
+    actions.ts        интерфейс Actions (полный список action'ов)
+    initial.ts        initialState + константы (PLAYER_COLORS, HERO_HIRE_COST)
+    persist.ts        persist-конфиг + версия + migrate-функция
+    helpers/          чистые функции: log, gate, army, economy, ai, levelUp, interactions
+    slices/           реализация Actions по доменам: menu, lifecycle, selection,
+                      adventure, town, army, battle
+    ai/runTurn.ts     ход ИИ на карте (async, с паузами под анимацию UI)
+  data/               справочники: units, buildings, heroes, spells, templates, artifacts
+  utils/              чистые помощники: rng, A* (pathfind), ресурсы, id, visibility, zoc, heroBonus, leveling, army
+  map/generate.ts     процедурная генерация карты (биомы, города 3×2, объекты, шахты)
+  battle/engine.ts    пошаговый бой (поле 15×11, инициатива, заклинания, ИИ)
+ui/                   UI-слой:
+  AdventureScreen.tsx — карта приключений (контроллер ввода + tooltip + sidebar)
+  BattleScreen.tsx    — бой (контроллер ввода + tooltip + спеллбук)
+  TownScreen.tsx      — город (постройки, найм, гарнизон)
+  HeroScreen.tsx, HeroMeetingScreen.tsx — экран героя + встреча
+  MainMenu / NewGame / Multiplayer / GameOver — простые экраны
+  canvas/             слои рендера карты (terrain/objects/heroes/path/hover/minimap)
+  battleCanvas/       слои рендера боя (field/highlight/obstacles/stacks)
+  hero/               общие UI-компоненты (ArmyGrid, EquippedGrid, BackpackGrid)
+  town/               BuildingsGrid + RecruitCard + 3 модалки (Tavern/Market/MageGuild)
+  hooks/              useAnimationLoop (rAF), useCamera (карта)
+  settingsStore.ts    zustand-store настроек UI (animSpeed); хранится отдельно от game state
+net/
+  netStore.ts         состояние сетевой роли (sp/host/client)
+  peer.ts             PeerJS-обёртка (host/client transport)
+  sync.ts             маршрутизатор: broadcast state ↔ handle incoming
+  registry.ts         LOCAL_STATE_FIELDS + автоматический snapshotGameState
 ```
+
+**Принципы**:
+
+- Внешний API store (`useGame`) — единая точка для UI. Любой UI-компонент берёт нужный action через `useGame(s => s.someAction)`.
+- Сетевые action'ы помечаются обёрткой `gate("name", fn)` из `state/helpers/gate.ts`. Само определение `gate` авто-регистрирует имя в `networkedActionNames` — отдельного whitelist'а в sync-слое держать не нужно.
+- При добавлении нового вида объекта карты (`obelisk`/`portal`/...): добавить интерфейс в `types.ts` и включить в `MapObject` union. TS подсветит все `switch (obj.kind)`, где нужна новая ветка.
+- При добавлении новой `Phase`: TS укажет на `PHASE_SCREENS` в `App.tsx` (Record exhaustive).
 
 ## Smoke-test
 
