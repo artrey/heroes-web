@@ -24,7 +24,7 @@ export function applyDailyIncome(s: GameState): Record<string, Player> {
     // Шахты — посмотреть все объекты карты, принадлежащие игроку.
     if (s.map) {
       for (const obj of Object.values(s.map.objects)) {
-        if (obj.kind === "mine" && obj.ownerId === pid && obj.mineResource && obj.mineYield) {
+        if (obj.kind === "mine" && obj.ownerId === pid) {
           res = add(res, { [obj.mineResource]: obj.mineYield } as Partial<ResourceBag>);
         }
       }

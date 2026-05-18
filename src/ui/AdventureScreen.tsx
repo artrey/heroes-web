@@ -830,7 +830,7 @@ function drawMap(
         drawObjectShadow(ctx, cx, cy);
       }
       drawEmoji(ctx, obj.icon, cx, cy, 22);
-    } else if (obj.kind === "resource" && obj.resource) {
+    } else if (obj.kind === "resource") {
       // Берём текущую иконку из общей таблицы — старые сейвы могут хранить устаревший emoji.
       drawObjectShadow(ctx, cx, cy);
       drawEmoji(ctx, RESOURCE_ICONS[obj.resource], cx, cy, 22);
@@ -1208,7 +1208,7 @@ function MapTooltip({
     const totalUnits = hero.army.reduce((acc, s) => acc + s.count, 0);
     lines.push({ title: "Армия", sub: `${totalUnits} существ` });
   } else if (obj) {
-    if (obj.kind === "monster" && obj.unitId && obj.unitCount) {
+    if (obj.kind === "monster") {
       const u = UNITS_LOCAL[obj.unitId];
       lines.push({ title: `${u.icon} ${u.name}`, sub: countLabel(obj.unitCount) });
       lines.push({ title: "Бой!", sub: `Атк ${u.attack} / Защ ${u.defense} / HP ${u.hp}` });
@@ -1216,15 +1216,15 @@ function MapTooltip({
       const tw = towns[obj.id];
       const ow = tw?.ownerId ? players[tw.ownerId] : null;
       lines.push({ title: `${obj.icon} ${tw?.name ?? "Город"}`, sub: ow ? `Владелец: ${ow.name}` : "Нейтральный" });
-    } else if (obj.kind === "resource" && obj.resource) {
+    } else if (obj.kind === "resource") {
       lines.push({ title: `${RESOURCE_ICONS[obj.resource]} ${RESOURCE_NAMES[obj.resource]}`, sub: `+${obj.amount}` });
-    } else if (obj.kind === "mine" && obj.mineResource) {
+    } else if (obj.kind === "mine") {
       const ow = obj.ownerId ? players[obj.ownerId] : null;
       lines.push({
         title: `${obj.icon} Шахта (${RESOURCE_NAMES[obj.mineResource]})`,
         sub: ow ? `Владелец: ${ow.name}` : "Нейтральная",
       });
-    } else if (obj.kind === "artifact" && obj.artifactId) {
+    } else if (obj.kind === "artifact") {
       const a = ARTIFACTS_LOCAL[obj.artifactId];
       lines.push({ title: `${a.icon} ${a.name}`, sub: a.description });
     } else if (obj.kind === "chest") {

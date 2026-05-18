@@ -139,39 +139,84 @@ export interface Town {
   learnedSpells: string[];
 }
 
-export type ObjectKind =
-  | "resource"
-  | "mine"
-  | "dwelling"
-  | "monster"
-  | "artifact"
-  | "chest"
-  | "sign"
-  | "tree"
-  | "mountain";
-
-export interface MapObject {
+// Базовая часть для всех объектов карты. Каждый конкретный объект — это
+// discriminated union по `kind`, чтобы TS гарантировал наличие нужных полей и
+// помогал ловить пропущенные ветки в switch'ах.
+export interface MapObjectBase {
   id: string;
-  kind: ObjectKind;
   pos: Coord;
-  ownerId?: string | null;
-  // для resource
-  resource?: Resource;
-  amount?: number;
-  // для mine
-  mineResource?: Resource;
-  mineYield?: number;
-  // для monster
-  unitId?: string;
-  unitCount?: number;
-  // для artifact / chest
-  artifactId?: string;
-  goldAmount?: number;
-  visited?: string[]; // ids героев, которые уже посетили (для не-удаляемых объектов)
   blocking: boolean;
   passable: boolean; // можно ли встать на этот тайл (флаг, мост и т.д.)
   icon: string;
 }
+
+export interface ResourceObject extends MapObjectBase {
+  kind: "resource";
+  resource: Resource;
+  amount: number;
+}
+
+export interface MineObject extends MapObjectBase {
+  kind: "mine";
+  ownerId: string | null;
+  mineResource: Resource;
+  mineYield: number;
+}
+
+// Жилище / город. Сам Town живёт в state.towns[obj.id]; здесь только то, что
+// нужно карте: иконка, владелец (для отрисовки цвета плашки), позиция.
+export interface DwellingObject extends MapObjectBase {
+  kind: "dwelling";
+  ownerId: string | null;
+}
+
+export interface MonsterObject extends MapObjectBase {
+  kind: "monster";
+  unitId: string;
+  unitCount: number;
+}
+
+export interface ChestObject extends MapObjectBase {
+  kind: "chest";
+  goldAmount: number;
+}
+
+export interface ArtifactObject extends MapObjectBase {
+  kind: "artifact";
+  artifactId: string;
+}
+
+// Декоративные непроходимые объекты — ландшафт.
+export interface TreeObject extends MapObjectBase {
+  kind: "tree";
+}
+
+export interface MountainObject extends MapObjectBase {
+  kind: "mountain";
+}
+
+export type MapObject =
+  | ResourceObject
+  | MineObject
+  | DwellingObject
+  | MonsterObject
+  | ChestObject
+  | ArtifactObject
+  | TreeObject
+  | MountainObject;
+
+export type ObjectKind = MapObject["kind"];
+
+// Узкие подмножества для удобства: объекты, которые игрок может «подобрать
+// или взаимодействовать», и объекты со-владельцем (для FoG/UI цвета).
+export type InteractiveObject =
+  | ResourceObject
+  | MineObject
+  | DwellingObject
+  | MonsterObject
+  | ChestObject
+  | ArtifactObject;
+export type OwnedMapObject = MineObject | DwellingObject;
 
 export interface Tile {
   terrain: Terrain;

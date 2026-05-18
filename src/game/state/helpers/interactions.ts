@@ -77,10 +77,10 @@ export function interactWithObject(api: StoreApi, objId: string, heroId?: string
         h => h.ownerId === s.activePlayerId && h.pos.x === obj.pos.x && h.pos.y === obj.pos.y,
       );
 
-  if (obj.kind === "resource" && obj.resource) {
+  if (obj.kind === "resource") {
     if (!hero) return;
     const player = s.players[hero.ownerId];
-    const newResources = add(player.resources, { [obj.resource]: obj.amount ?? 0 } as Partial<ResourceBag>);
+    const newResources = add(player.resources, { [obj.resource]: obj.amount } as Partial<ResourceBag>);
     const newObjects = { ...s.map.objects };
     delete newObjects[obj.id];
     const newTiles = s.map.tiles.slice();
@@ -99,7 +99,7 @@ export function interactWithObject(api: StoreApi, objId: string, heroId?: string
   if (obj.kind === "chest") {
     if (!hero) return;
     const player = s.players[hero.ownerId];
-    const baseAmount = obj.goldAmount ?? 1000;
+    const baseAmount = obj.goldAmount;
     const giveXp = Math.random() < 0.35;
     const newObjects = { ...s.map.objects };
     delete newObjects[obj.id];
@@ -137,7 +137,7 @@ export function interactWithObject(api: StoreApi, objId: string, heroId?: string
     return;
   }
 
-  if (obj.kind === "mine" && obj.mineResource) {
+  if (obj.kind === "mine") {
     if (!hero) return;
     if (obj.ownerId === hero.ownerId) return;
     const newObjects = { ...s.map.objects, [obj.id]: { ...obj, ownerId: hero.ownerId } };
@@ -157,7 +157,7 @@ export function interactWithObject(api: StoreApi, objId: string, heroId?: string
     return;
   }
 
-  if (obj.kind === "artifact" && obj.artifactId) {
+  if (obj.kind === "artifact") {
     if (!hero) return;
     const artDef = getArtifact(obj.artifactId);
     // Если слот свободен — сразу экипируем; иначе кидаем в backpack.
@@ -184,7 +184,7 @@ export function interactWithObject(api: StoreApi, objId: string, heroId?: string
     return;
   }
 
-  if (obj.kind === "monster" && obj.unitId && obj.unitCount) {
+  if (obj.kind === "monster") {
     if (!hero) return;
     const battle = startBattle({
       attackerHero: hero,

@@ -45,8 +45,8 @@ export function pickAiTarget(state: GameState, hero: Hero): Coord | null {
       const d = chebyshev(hero.pos, obj.pos) + 5;
       if (!best || d < best.d) best = { d, pos: obj.pos };
     } else if (obj.kind === "monster") {
-      const monsterUnit = UNITS[obj.unitId!];
-      const monsterPower = monsterUnit.hp * (obj.unitCount ?? 0);
+      const monsterUnit = UNITS[obj.unitId];
+      const monsterPower = monsterUnit.hp * obj.unitCount;
       const heroPower = hero.army.reduce((acc, st) => acc + UNITS[st.unitId].hp * st.count, 0);
       if (heroPower > monsterPower * 1.5) {
         const d = chebyshev(hero.pos, obj.pos) + 1;
