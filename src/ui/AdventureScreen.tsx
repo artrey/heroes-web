@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-// Локальный импорт для удобства.
 import { ARTIFACTS as ARTIFACTS_LOCAL } from "../game/data/artifacts";
 import { FACTION_META } from "../game/data/factions";
 import { UNITS as UNITS_LOCAL } from "../game/data/units";
 import { useGame } from "../game/store";
-import type { Coord, Hero, ResourceBag, Tile } from "../game/types";
+import type { Coord, GameMap, Hero, Player, ResourceBag, Town } from "../game/types";
 import {
   getEffectiveKnowledge,
   getEffectiveMaxMana,
@@ -13,37 +12,22 @@ import {
   getHeroBonus,
 } from "../game/utils/heroBonus";
 import { dailyIncomeFor } from "../game/utils/income";
-import { findPath, isPassable, pathCost, stepCost } from "../game/utils/pathfind";
+import { findPath, pathCost } from "../game/utils/pathfind";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { computeVisibleTiles } from "../game/utils/visibility";
 import { computeDanger } from "../game/utils/zoc";
 import { useNet } from "../net/netStore";
 import { AnimSpeedToggle } from "./AnimSpeedToggle";
+import { EDGE_PADDING_TILES, TILE_SIZE } from "./canvas/constants";
+import { drawMap } from "./canvas/drawMap";
+import { getMinimapBounds } from "./canvas/minimapLayer";
 import { ANIM_SPEED_SCALE, useSettings } from "./settingsStore";
-import { getTerrainBaseColor, getTerrainTile } from "./terrainPatterns";
-
-const TILE_SIZE = 32;
-// Сколько клеток «воздуха» можно прокрутить за реальные границы карты,
-// чтобы содержимое не упиралось в края экрана и боковую панель.
-const EDGE_PADDING_TILES = 5;
 
 // Прошлые позиции героев живут на уровне модуля, а не в useRef. AdventureScreen
 // размонтируется на время боя (App.tsx показывает BattleScreen поверх), и если
 // бы prev хранился в ref, после боя он был бы пустым — и следующий ход ИИ
 // рендерился мгновенно, без анимации. Module-scope сохраняет базу сравнения.
 const prevHeroPosRegistry: Record<string, Coord> = {};
-
-const TERRAIN_COLOR: Record<string, string> = {
-  grass: "#3a5a2a",
-  dirt: "#6b4a2a",
-  sand: "#c8a86a",
-  snow: "#d8d8e0",
-  forest: "#1a3a1a",
-  mountain: "#5a4a3a",
-  water: "#2a4a8a",
-  lava: "#a02a10",
-  rough: "#7a6a4a",
-};
 
 export function AdventureScreen() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -280,27 +264,25 @@ export function AdventureScreen() {
     return { [a.heroId]: { x: aP.x + (bP.x - aP.x) * t, y: aP.y + (bP.y - aP.y) * t } };
   }
 
-  // Рендер карты.
+  // Рендер карты — собираем параметры и зовём orchestrator из canvas/.
   useEffect(() => {
     if (!map || !canvasRef.current) return;
     const ctx = canvasRef.current.getContext("2d");
     if (!ctx) return;
-    drawMap(
-      ctx,
-      map.tiles,
+    drawMap(ctx, {
       map,
       heroes,
       towns,
       players,
       camera,
+      revealed,
+      visible,
       hoverPath,
       hoverTile,
       selectedHeroId,
-      revealed,
-      visible,
       danger,
-      computeHeroVisualPos(),
-    );
+      heroVisualPos: computeHeroVisualPos(),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible, danger, animTick]);
 
@@ -309,7 +291,7 @@ export function AdventureScreen() {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [log]);
 
-  // Размер canvas.
+  // Размер canvas + перерисовать на resize.
   useEffect(() => {
     function fit() {
       const c = canvasRef.current;
@@ -317,26 +299,23 @@ export function AdventureScreen() {
       if (!c || !cont) return;
       c.width = cont.clientWidth;
       c.height = cont.clientHeight;
-      // Перерисовать.
       if (map) {
         const ctx = c.getContext("2d");
         if (ctx)
-          drawMap(
-            ctx,
-            map.tiles,
+          drawMap(ctx, {
             map,
             heroes,
             towns,
             players,
             camera,
+            revealed,
+            visible,
             hoverPath,
             hoverTile,
             selectedHeroId,
-            revealed,
-            visible,
             danger,
-            computeHeroVisualPos(),
-          );
+            heroVisualPos: computeHeroVisualPos(),
+          });
       }
     }
     fit();
@@ -456,9 +435,9 @@ export function AdventureScreen() {
 
     if (tile.objectId) {
       const obj = map!.objects[tile.objectId];
-      // Город теперь занимает 3×3 клетки — все 9 имеют objectId=townId. Любой
-      // клик по городу резолвим в его entry-tile (центральная нижняя клетка):
-      // и для своего города (зайти/подойти), и для чужого (штурм).
+      // Город занимает 3×2 клетки — все 6 имеют objectId=townId. Любой клик по
+      // городу резолвим в его entry-tile (центральная нижняя клетка): и для
+      // своего города (зайти/подойти), и для чужого (штурм).
       if (obj?.kind === "dwelling") {
         const tw = towns[obj.id];
         if (tw) {
@@ -746,430 +725,6 @@ function ArmyDisplay({ hero }: { hero: Hero }) {
   );
 }
 
-function drawMap(
-  ctx: CanvasRenderingContext2D,
-  tiles: Tile[],
-  map: NonNullable<ReturnType<typeof useGame.getState>["map"]>,
-  heroes: Record<string, Hero>,
-  towns: Record<string, ReturnType<typeof useGame.getState>["towns"][string]>,
-  players: Record<string, ReturnType<typeof useGame.getState>["players"][string]>,
-  camera: Coord,
-  hoverPath: Coord[] | null,
-  hoverTile: Coord | null,
-  selectedHeroId: string | null,
-  revealed: Record<string, true>,
-  visible: Set<string>,
-  danger: { cells: Set<string>; sources: Set<string> },
-  heroVisualPos: Record<string, Coord> = {},
-) {
-  const W = map.width;
-  const H = map.height;
-  const cw = ctx.canvas.width;
-  const ch = ctx.canvas.height;
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, cw, ch);
-
-  const startX = Math.max(0, Math.floor(camera.x / TILE_SIZE));
-  const endX = Math.min(W, Math.ceil((camera.x + cw) / TILE_SIZE));
-  const startY = Math.max(0, Math.floor(camera.y / TILE_SIZE));
-  const endY = Math.min(H, Math.ceil((camera.y + ch) / TILE_SIZE));
-
-  for (let y = startY; y < endY; y++) {
-    for (let x = startX; x < endX; x++) {
-      const t = tiles[y * W + x];
-      const sx = x * TILE_SIZE - camera.x;
-      const sy = y * TILE_SIZE - camera.y;
-      const key = `${x},${y}`;
-      const isRevealed = revealed[key] === true;
-      const isVisible = visible.has(key);
-      if (!isRevealed) {
-        // Тайл никогда не видели — оставляем чёрный фон.
-        continue;
-      }
-      const tile = getTerrainTile(t.terrain);
-      if (tile) {
-        ctx.drawImage(tile, sx, sy, TILE_SIZE, TILE_SIZE);
-      } else {
-        ctx.fillStyle = TERRAIN_COLOR[t.terrain] ?? "#444";
-        ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
-      }
-      ctx.strokeStyle = "rgba(0,0,0,0.18)";
-      ctx.strokeRect(sx + 0.5, sy + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
-      if (!isVisible) {
-        // «Память» — затемнение поверх террейна.
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
-        ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
-      }
-    }
-  }
-
-  // Объекты карты — только если тайл когда-либо видели.
-  for (const obj of Object.values(map.objects)) {
-    if (revealed[`${obj.pos.x},${obj.pos.y}`] !== true) continue;
-    const sx = obj.pos.x * TILE_SIZE - camera.x;
-    const sy = obj.pos.y * TILE_SIZE - camera.y;
-    if (sx < -TILE_SIZE || sy < -TILE_SIZE || sx > cw || sy > ch) continue;
-    const cx = sx + TILE_SIZE / 2;
-    const cy = sy + TILE_SIZE / 2;
-    if (obj.kind === "dwelling") {
-      // Замок 3×2: 3 клетки в ширину, 2 в высоту. Entry (obj.pos) — центральная
-      // нижняя клетка. Рисуем одну большую плитку, в центре — эмодзи фракции.
-      const tw = towns[obj.id];
-      const ownerColor = tw?.ownerId ? (players[tw.ownerId]?.color ?? "#888") : "#888";
-      const topX = (obj.pos.x - 1) * TILE_SIZE - camera.x;
-      const topY = (obj.pos.y - 1) * TILE_SIZE - camera.y;
-      const w = 3 * TILE_SIZE;
-      const h = 2 * TILE_SIZE;
-      drawTownPlaque(ctx, topX, topY, w, h, ownerColor);
-      drawEmoji(ctx, obj.icon, topX + w / 2, topY + h / 2 - 2, 48);
-      if (tw?.builtToday) drawBuiltTodayBadge(ctx, topX + w - TILE_SIZE, topY);
-    } else if (obj.kind === "mine") {
-      if (obj.ownerId) {
-        drawBuildingPlaque(ctx, sx, sy, players[obj.ownerId]?.color ?? "#888");
-      } else {
-        drawObjectShadow(ctx, cx, cy);
-      }
-      drawEmoji(ctx, obj.icon, cx, cy, 22);
-    } else if (obj.kind === "resource") {
-      // Берём текущую иконку из общей таблицы — старые сейвы могут хранить устаревший emoji.
-      drawObjectShadow(ctx, cx, cy);
-      drawEmoji(ctx, RESOURCE_ICONS[obj.resource], cx, cy, 22);
-    } else {
-      drawObjectShadow(ctx, cx, cy);
-      drawEmoji(ctx, obj.icon, cx, cy, 22);
-    }
-  }
-
-  // Герои — только если стоят на видимой прямо сейчас клетке.
-  // Анимированному герою рисуем по интерполированной (sub-tile) позиции, но
-  // visible/clipping считаем от его «логической» клетки в state.
-  for (const h of Object.values(heroes)) {
-    if (!visible.has(`${h.pos.x},${h.pos.y}`)) continue;
-    const draw = heroVisualPos[h.id] ?? h.pos;
-    const sx = draw.x * TILE_SIZE - camera.x;
-    const sy = draw.y * TILE_SIZE - camera.y;
-    if (sx < -TILE_SIZE || sy < -TILE_SIZE || sx > cw || sy > ch) continue;
-    const owner = players[h.ownerId];
-    const color = owner?.color ?? "#888";
-    const cx = sx + TILE_SIZE / 2;
-    const cy = sy + TILE_SIZE / 2;
-    drawHeroToken(ctx, cx, cy, color, h.id === selectedHeroId);
-    drawEmoji(ctx, h.icon, cx, cy, 22);
-  }
-
-  // Путь.
-  if (hoverPath && hoverPath.length > 0 && selectedHeroId) {
-    const hero = heroes[selectedHeroId];
-    if (hero) {
-      let prev = hero.pos;
-      let mp = hero.movePoints;
-      for (const p of hoverPath) {
-        const dx = Math.abs(p.x - prev.x);
-        const dy = Math.abs(p.y - prev.y);
-        const cost = stepCost(dx, dy);
-        const reachable = mp >= cost;
-        mp -= cost;
-        const sx = p.x * TILE_SIZE - camera.x + TILE_SIZE / 2;
-        const sy = p.y * TILE_SIZE - camera.y + TILE_SIZE / 2;
-        ctx.fillStyle = reachable ? "rgba(255, 220, 80, 0.7)" : "rgba(255, 80, 80, 0.6)";
-        ctx.beginPath();
-        ctx.arc(sx, sy, 5, 0, Math.PI * 2);
-        ctx.fill();
-        prev = p;
-      }
-    }
-  }
-
-  if (hoverTile) {
-    const sx = hoverTile.x * TILE_SIZE - camera.x;
-    const sy = hoverTile.y * TILE_SIZE - camera.y;
-    ctx.strokeStyle = "#ffd966";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(sx + 1, sy + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-    ctx.lineWidth = 1;
-  }
-
-  // Подсветка охраняющих юнитов:
-  // - hover над danger-cell (под охраной) → красные обводки соседних source-тайлов;
-  // - hover над самим source (монстр/вражеский герой) → подсветка всех его danger cells.
-  if (hoverTile) {
-    const hKey = `${hoverTile.x},${hoverTile.y}`;
-    const guards: Coord[] = [];
-    const guardedCells: Coord[] = [];
-    if (danger.cells.has(hKey)) {
-      for (const srcKey of danger.sources) {
-        const [gx, gy] = srcKey.split(",").map(Number);
-        if (Math.max(Math.abs(gx - hoverTile.x), Math.abs(gy - hoverTile.y)) === 1) {
-          guards.push({ x: gx, y: gy });
-        }
-      }
-    } else if (danger.sources.has(hKey)) {
-      for (const cellKey of danger.cells) {
-        const [cx, cy] = cellKey.split(",").map(Number);
-        if (Math.max(Math.abs(cx - hoverTile.x), Math.abs(cy - hoverTile.y)) === 1) {
-          guardedCells.push({ x: cx, y: cy });
-        }
-      }
-      guards.push(hoverTile);
-    }
-    for (const c of guardedCells) {
-      const sx = c.x * TILE_SIZE - camera.x;
-      const sy = c.y * TILE_SIZE - camera.y;
-      ctx.fillStyle = "rgba(220,60,40,0.18)";
-      ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
-    }
-    for (const g of guards) {
-      const sx = g.x * TILE_SIZE - camera.x;
-      const sy = g.y * TILE_SIZE - camera.y;
-      ctx.strokeStyle = "#ff5040";
-      ctx.lineWidth = 2.5;
-      ctx.strokeRect(sx + 1, sy + 1, TILE_SIZE - 2, TILE_SIZE - 2);
-      ctx.lineWidth = 1;
-    }
-  }
-
-  // Минимап в правом нижнем углу.
-  drawMinimap(ctx, map, heroes, towns, players, camera, cw, ch, revealed, visible);
-  // Подавим warning о неиспользованном isPassable.
-  void isPassable;
-}
-
-// Жетон героя: тёмный круг под цветным фоном владельца с радиальным градиентом,
-// тонкой обводкой, тенью под собой и пульсирующей подсветкой для выбранного.
-function drawHeroToken(ctx: CanvasRenderingContext2D, cx: number, cy: number, color: string, isSelected: boolean) {
-  const r = TILE_SIZE / 2 - 3;
-  // Тень.
-  ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.45)";
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + r - 2, r - 2, r / 3, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-  // Основной круг — радиальный градиент.
-  const grad = ctx.createRadialGradient(cx - r / 3, cy - r / 3, 0, cx, cy, r);
-  grad.addColorStop(0, lighten(color, 0.35));
-  grad.addColorStop(1, darken(color, 0.25));
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fill();
-  // Обводка.
-  ctx.strokeStyle = darken(color, 0.5);
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  if (isSelected) {
-    ctx.strokeStyle = "#ffd966";
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r + 1, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-  ctx.lineWidth = 1;
-}
-
-// Большая плашка замка (по умолчанию 3×2 клетки). Плашка полностью покрывает
-// все клетки футпринта (без внутреннего pad'а), чтобы сетка тайлов не «выпирала»
-// из-под краёв. Сверху — зубцы стены (внутри плитки), снизу — тень, под entry-tile
-// золотая полоска как маркер точки входа.
-function drawTownPlaque(ctx: CanvasRenderingContext2D, sx: number, sy: number, w: number, h: number, color: string) {
-  // Сначала полностью перекрываем фон под плиткой, чтобы сетка `0,0,0,0.18`,
-  // нанесённая drawMap'ом на каждый тайл, не просвечивала по краям.
-  ctx.fillStyle = "#0a0806";
-  ctx.fillRect(sx, sy, w, h);
-  // Корпус — крепостная стена.
-  const grad = ctx.createLinearGradient(sx, sy, sx, sy + h);
-  grad.addColorStop(0, lighten(color, 0.3));
-  grad.addColorStop(0.55, color);
-  grad.addColorStop(1, darken(color, 0.4));
-  ctx.fillStyle = grad;
-  ctx.fillRect(sx, sy, w, h);
-  // Зубцы стены — ВНУТРИ плитки, чтобы не торчали вверх в чужой тайл.
-  ctx.fillStyle = darken(color, 0.45);
-  const merlonCount = 4;
-  const merlonW = Math.floor(w / 10);
-  const gap = Math.floor(w / 18);
-  const startX = sx + (w - (merlonCount * merlonW + (merlonCount - 1) * gap)) / 2;
-  for (let i = 0; i < merlonCount; i++) {
-    ctx.fillRect(startX + i * (merlonW + gap), sy + 3, merlonW, 6);
-  }
-  // Тень у основания (внутри плитки).
-  ctx.fillStyle = "rgba(0,0,0,0.45)";
-  ctx.fillRect(sx + 4, sy + h - 5, w - 8, 3);
-  // Внешняя обводка по всему контуру плитки.
-  ctx.strokeStyle = darken(color, 0.6);
-  ctx.lineWidth = 2;
-  ctx.strokeRect(sx + 1, sy + 1, w - 2, h - 2);
-  // Подчёркиваем нижний (entry) тайл лёгкой золотой полоской — точка входа.
-  ctx.strokeStyle = "rgba(212, 166, 74, 0.9)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(sx + w / 2 - TILE_SIZE / 2 + 4, sy + h - 3);
-  ctx.lineTo(sx + w / 2 + TILE_SIZE / 2 - 4, sy + h - 3);
-  ctx.stroke();
-  ctx.lineWidth = 1;
-}
-
-// Подложка под город/шахту: чуть приподнятый квадрат с градиентом-«крышей»
-// и тенью под собой.
-function drawBuildingPlaque(ctx: CanvasRenderingContext2D, sx: number, sy: number, color: string) {
-  const pad = 2;
-  const grad = ctx.createLinearGradient(sx, sy, sx, sy + TILE_SIZE);
-  grad.addColorStop(0, lighten(color, 0.25));
-  grad.addColorStop(1, darken(color, 0.3));
-  // Тень.
-  ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.4)";
-  ctx.fillRect(sx + pad + 1, sy + TILE_SIZE - 4, TILE_SIZE - 2 * pad - 2, 3);
-  ctx.restore();
-  // Корпус.
-  ctx.fillStyle = grad;
-  ctx.fillRect(sx + pad, sy + pad, TILE_SIZE - 2 * pad, TILE_SIZE - 2 * pad);
-  ctx.strokeStyle = darken(color, 0.55);
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(sx + pad + 0.5, sy + pad + 0.5, TILE_SIZE - 2 * pad - 1, TILE_SIZE - 2 * pad - 1);
-  ctx.lineWidth = 1;
-}
-
-// Лёгкая овальная тень под объектом без подложки (ресурсы, артефакты, сундуки).
-// Маркер «здание сегодня уже построено» — небольшой кружок в правом верхнем углу
-// тайла города с «✓». Цель — на карте сразу видно, что сегодня тут больше нельзя строить.
-function drawBuiltTodayBadge(ctx: CanvasRenderingContext2D, sx: number, sy: number) {
-  const x = sx + TILE_SIZE - 6;
-  const y = sy + 6;
-  ctx.fillStyle = "rgba(0,0,0,0.85)";
-  ctx.beginPath();
-  ctx.arc(x, y, 6, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "#5fa850";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.lineWidth = 1;
-  ctx.fillStyle = "#5fa850";
-  ctx.font = "bold 9px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("✓", x, y + 1);
-}
-
-function drawObjectShadow(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
-  ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.4)";
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + TILE_SIZE / 3, TILE_SIZE / 3, TILE_SIZE / 9, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-// Простые light/dark манипуляции с HEX — без зависимостей на color libs.
-function lighten(hex: string, amount: number): string {
-  return mixHex(hex, "#ffffff", amount);
-}
-function darken(hex: string, amount: number): string {
-  return mixHex(hex, "#000000", amount);
-}
-function mixHex(a: string, b: string, t: number): string {
-  const pa = parseHex(a);
-  const pb = parseHex(b);
-  const r = Math.round(pa[0] * (1 - t) + pb[0] * t);
-  const g = Math.round(pa[1] * (1 - t) + pb[1] * t);
-  const bl = Math.round(pa[2] * (1 - t) + pb[2] * t);
-  return `rgb(${r}, ${g}, ${bl})`;
-}
-function parseHex(s: string): [number, number, number] {
-  const m = /^#?([0-9a-f]{6})$/i.exec(s);
-  if (m) {
-    const n = parseInt(m[1], 16);
-    return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
-  }
-  return [128, 128, 128];
-}
-
-function drawEmoji(ctx: CanvasRenderingContext2D, txt: string, cx: number, cy: number, size: number) {
-  ctx.font = `${size}px serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#fff";
-  ctx.fillText(txt, cx, cy);
-}
-
-// Размеры/позиция минимапа — используются и при отрисовке, и при ловле кликов.
-function getMinimapBounds(mapWidth: number, mapHeight: number, cw: number, ch: number) {
-  const mmSize = 160;
-  const px = Math.max(1, Math.floor(mmSize / Math.max(mapWidth, mapHeight)));
-  const mmW = px * mapWidth;
-  const mmH = px * mapHeight;
-  const ox = cw - mmW - 12;
-  const oy = ch - mmH - 12;
-  return { px, mmW, mmH, ox, oy };
-}
-
-function drawMinimap(
-  ctx: CanvasRenderingContext2D,
-  map: NonNullable<ReturnType<typeof useGame.getState>["map"]>,
-  heroes: Record<string, Hero>,
-  towns: Record<string, ReturnType<typeof useGame.getState>["towns"][string]>,
-  players: Record<string, ReturnType<typeof useGame.getState>["players"][string]>,
-  camera: Coord,
-  cw: number,
-  ch: number,
-  revealed: Record<string, true>,
-  visible: Set<string>,
-) {
-  const { px, mmW, mmH, ox, oy } = getMinimapBounds(map.width, map.height, cw, ch);
-  // Контейнер минимапа: подложка + золотая обводка, чтобы не сливалась с тёмным буфером карты.
-  ctx.fillStyle = "rgba(0,0,0,0.78)";
-  ctx.fillRect(ox - 6, oy - 6, mmW + 12, mmH + 12);
-  ctx.strokeStyle = "#d4a64a";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(ox - 6 + 0.5, oy - 6 + 0.5, mmW + 12 - 1, mmH + 12 - 1);
-  ctx.lineWidth = 1;
-  for (let y = 0; y < map.height; y++) {
-    for (let x = 0; x < map.width; x++) {
-      const key = `${x},${y}`;
-      if (revealed[key] !== true) {
-        ctx.fillStyle = "#000";
-        ctx.fillRect(ox + x * px, oy + y * px, px, px);
-        continue;
-      }
-      const t = map.tiles[y * map.width + x];
-      ctx.fillStyle = t.passable ? getTerrainBaseColor(t.terrain) : "#222";
-      ctx.fillRect(ox + x * px, oy + y * px, px, px);
-      if (!visible.has(key)) {
-        ctx.fillStyle = "rgba(0,0,0,0.5)";
-        ctx.fillRect(ox + x * px, oy + y * px, px, px);
-      }
-    }
-  }
-  // Города, шахты и герои на минимапе — с учётом тумана.
-  for (const tw of Object.values(towns)) {
-    if (revealed[`${tw.pos.x},${tw.pos.y}`] !== true) continue;
-    const owner = tw.ownerId ? (players[tw.ownerId]?.color ?? "#fff") : "#999";
-    ctx.fillStyle = owner;
-    ctx.fillRect(ox + tw.pos.x * px - 1, oy + tw.pos.y * px - 1, px + 2, px + 2);
-  }
-  for (const obj of Object.values(map.objects)) {
-    if (obj.kind !== "mine" || !obj.ownerId) continue;
-    if (revealed[`${obj.pos.x},${obj.pos.y}`] !== true) continue;
-    ctx.fillStyle = players[obj.ownerId]?.color ?? "#fff";
-    ctx.fillRect(ox + obj.pos.x * px, oy + obj.pos.y * px, px, px);
-  }
-  for (const h of Object.values(heroes)) {
-    if (!visible.has(`${h.pos.x},${h.pos.y}`)) continue;
-    ctx.fillStyle = players[h.ownerId]?.color ?? "#fff";
-    ctx.fillRect(ox + h.pos.x * px, oy + h.pos.y * px, px, px);
-  }
-  // Рамка вьюпорта — клипуем к границам карты, иначе из-за паддинга
-  // рамка может выходить за пределы минимапа.
-  const wx0 = Math.max(0, camera.x / TILE_SIZE);
-  const wy0 = Math.max(0, camera.y / TILE_SIZE);
-  const wx1 = Math.min(map.width, (camera.x + cw) / TILE_SIZE);
-  const wy1 = Math.min(map.height, (camera.y + ch) / TILE_SIZE);
-  if (wx1 > wx0 && wy1 > wy0) {
-    ctx.strokeStyle = "#ffd966";
-    ctx.strokeRect(ox + wx0 * px, oy + wy0 * px, (wx1 - wx0) * px, (wy1 - wy0) * px);
-  }
-}
-
 function PathCostBadge({ total, mp }: { total: number; mp: number }) {
   const enough = total <= mp;
   return (
@@ -1189,10 +744,10 @@ function MapTooltip({
   isVisibleNow,
 }: {
   tile: Coord;
-  map: NonNullable<ReturnType<typeof useGame.getState>["map"]>;
+  map: GameMap;
   heroes: Record<string, Hero>;
-  towns: Record<string, ReturnType<typeof useGame.getState>["towns"][string]>;
-  players: Record<string, ReturnType<typeof useGame.getState>["players"][string]>;
+  towns: Record<string, Town>;
+  players: Record<string, Player>;
   camera: Coord;
   isVisibleNow: boolean;
 }) {
