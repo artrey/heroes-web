@@ -22,6 +22,7 @@ import { EDGE_PADDING_TILES, TILE_SIZE } from "./canvas/constants";
 import { drawMap } from "./canvas/drawMap";
 import { getMinimapBounds } from "./canvas/minimapLayer";
 import { useAnimationLoop } from "./hooks/useAnimationLoop";
+import { useCamera } from "./hooks/useCamera";
 import { ANIM_SPEED_SCALE, useSettings } from "./settingsStore";
 
 // Прошлые позиции героев живут на уровне модуля, а не в useRef. AdventureScreen
@@ -54,11 +55,15 @@ export function AdventureScreen() {
 
   const animSpeed = useSettings(s => s.animSpeed);
 
-  const [camera, setCamera] = useState<Coord>({ x: 0, y: 0 });
   const [hoverPath, setHoverPath] = useState<Coord[] | null>(null);
   const [hoverTile, setHoverTile] = useState<Coord | null>(null);
-  // Drag-панорамирование средней/правой кнопкой. Храним в ref, чтобы не плодить ре-рендеры.
-  const panRef = useRef<{ startX: number; startY: number; camX: number; camY: number } | null>(null);
+  // Камера, drag-pan, скролл, стрелочки, clamp по краям + центрирование на клетке.
+  const { camera, setCamera, clampCamera, centerCameraOnTile, panMouseDown, panMouseMove, panMouseUp } = useCamera({
+    canvasRef,
+    map,
+    tileSize: TILE_SIZE,
+    edgePaddingTiles: EDGE_PADDING_TILES,
+  });
 
   // Локальная анимация движения героя по карте. В state хранится только финальная
   // позиция, а пройденный путь восстанавливаем через findPath между prev и current —
@@ -124,25 +129,6 @@ export function AdventureScreen() {
     () => (map ? computeDanger(map, heroes, activePlayerId) : { cells: new Set<string>(), sources: new Set<string>() }),
     [map, heroes, activePlayerId],
   );
-
-  // Границы камеры с учётом паддинга по краям. Возвращает [min, max] для оси.
-  function cameraRange(axisSize: number, viewportSize: number): [number, number] {
-    const pad = EDGE_PADDING_TILES * TILE_SIZE;
-    const min = -pad;
-    const max = Math.max(min, axisSize * TILE_SIZE - viewportSize + pad);
-    return [min, max];
-  }
-
-  function clampCamera(cam: Coord): Coord {
-    const c = canvasRef.current;
-    if (!c || !map) return cam;
-    const [minX, maxX] = cameraRange(map.width, c.width);
-    const [minY, maxY] = cameraRange(map.height, c.height);
-    return {
-      x: Math.max(minX, Math.min(maxX, cam.x)),
-      y: Math.max(minY, Math.min(maxY, cam.y)),
-    };
-  }
 
   // Центрируем камеру на выбранном герое при первом монтировании / смене героя.
   useEffect(() => {
@@ -336,20 +322,9 @@ export function AdventureScreen() {
     return { x: (cx - mm.ox) / mm.px, y: (cy - mm.oy) / mm.px };
   }
 
-  function centerCameraOnTile(tx: number, ty: number) {
-    const c = canvasRef.current;
-    if (!c || !map) return;
-    setCamera(clampCamera({ x: tx * TILE_SIZE - c.width / 2, y: ty * TILE_SIZE - c.height / 2 }));
-  }
-
   function handleMouseMove(ev: React.MouseEvent) {
-    // Drag-панорамирование средней/правой кнопкой — двигаем камеру за курсором.
-    if (panRef.current && map) {
-      const dx = ev.clientX - panRef.current.startX;
-      const dy = ev.clientY - panRef.current.startY;
-      setCamera(clampCamera({ x: panRef.current.camX - dx, y: panRef.current.camY - dy }));
-      return;
-    }
+    // Drag-панорамирование (средняя/правая кнопка) — useCamera обрабатывает сам.
+    if (panMouseMove(ev)) return;
     // Drag по минимапу с зажатой левой кнопкой.
     if (ev.buttons === 1) {
       const mm = minimapTileAt(ev);
@@ -475,60 +450,14 @@ export function AdventureScreen() {
     }
   }
 
-  function handleMouseDown(ev: React.MouseEvent) {
-    // Средняя или правая кнопка — начинаем drag-панорамирование.
-    if (ev.button === 1 || ev.button === 2) {
-      ev.preventDefault();
-      panRef.current = {
-        startX: ev.clientX,
-        startY: ev.clientY,
-        camX: camera.x,
-        camY: camera.y,
-      };
-    }
-  }
-
-  function handleMouseUp() {
-    panRef.current = null;
-  }
-
-  // Прокрутка карты колесом. Используем нативный listener с passive: false,
-  // чтобы preventDefault действительно блокировал прокрутку страницы.
-  useEffect(() => {
-    const c = canvasRef.current;
-    if (!c || !map) return;
-    function onWheel(e: WheelEvent) {
-      e.preventDefault();
-      // Shift + вертикальное колесо → горизонтальный скролл (привычка из браузера/GIS).
-      // Трекпад уже даёт обе оси сам, не трогаем.
-      let dx: number;
-      let dy: number;
-      if (e.shiftKey && e.deltaX === 0) {
-        dx = e.deltaY;
-        dy = 0;
-      } else {
-        dx = e.deltaX;
-        dy = e.deltaY;
-      }
-      setCamera(cam => clampCamera({ x: cam.x + dx, y: cam.y + dy }));
-    }
-    c.addEventListener("wheel", onWheel, { passive: false });
-    return () => c.removeEventListener("wheel", onWheel);
-  }, [map]);
-
-  // Прокрутка карты клавишами.
+  // Enter завершает ход. Стрелочки/wheel/drag-pan — внутри useCamera.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      const step = 64;
-      if (e.key === "ArrowLeft") setCamera(c => clampCamera({ x: c.x - step, y: c.y }));
-      if (e.key === "ArrowRight") setCamera(c => clampCamera({ x: c.x + step, y: c.y }));
-      if (e.key === "ArrowUp") setCamera(c => clampCamera({ x: c.x, y: c.y - step }));
-      if (e.key === "ArrowDown") setCamera(c => clampCamera({ x: c.x, y: c.y + step }));
       if (e.key === "Enter") endTurn();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [map]);
+  }, [endTurn]);
 
   // Боковая панель — всегда моё (а не активного игрока), даже когда ход чужой.
   const playerHeroes = myPlayer ? myPlayer.heroIds.map(id => heroes[id]).filter(Boolean) : [];
@@ -568,9 +497,9 @@ export function AdventureScreen() {
           className="map-canvas"
           onClick={handleClick}
           onMouseMove={handleMouseMove}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          onMouseDown={panMouseDown}
+          onMouseUp={panMouseUp}
+          onMouseLeave={panMouseUp}
           onContextMenu={e => e.preventDefault()}
         />
         {hoverTile && revealed[`${hoverTile.x},${hoverTile.y}`] === true && (
