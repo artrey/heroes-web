@@ -323,6 +323,14 @@ export interface NewGameOptions {
   humanFactions?: Faction[];
 }
 
+// Запись в журнале приключений. playerId === undefined → запись «глобальная»
+// (новый день, конец игры) и видна всем. Иначе UI показывает её только
+// игроку с этим id — чтобы не «подсматривать» за чужими ходами.
+export interface LogEntry {
+  text: string;
+  playerId?: string;
+}
+
 export interface GameState {
   phase: Phase;
   day: number;
@@ -348,7 +356,7 @@ export interface GameState {
   // на пустую клетку».
   pendingInteraction: { objectId: string; heroId: string } | null;
   options: NewGameOptions | null;
-  log: string[];
+  log: LogEntry[];
   winnerId: string | null;
 }
 

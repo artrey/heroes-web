@@ -659,11 +659,15 @@ export function AdventureScreen() {
         ))}
 
         <div className="log-panel" ref={logRef}>
-          {log.map((l, i) => (
-            <div key={i} className="entry">
-              {l}
-            </div>
-          ))}
+          {log
+            // Показываем глобальные события + личные записи моего игрока,
+            // чтобы не подсматривать ходы соперников.
+            .filter(e => !e.playerId || e.playerId === myPlayer?.id)
+            .map((l, i) => (
+              <div key={i} className="entry">
+                {l.text}
+              </div>
+            ))}
         </div>
 
         <button className="end-turn-btn" onClick={() => endTurn()} disabled={!isMyTurn}>
