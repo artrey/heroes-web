@@ -1,17 +1,19 @@
 import { useState } from "react";
 
-import { FACTION_BUILDINGS, getBuilding, MAGE_GUILD_LEVEL } from "../game/data/buildings";
+import { FACTION_BUILDINGS, MAGE_GUILD_LEVEL } from "../game/data/buildings";
 import { FACTION_META } from "../game/data/factions";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { ArmySlotRef, ResourceBag } from "../game/types";
 import { findFirstEmptySlot } from "../game/utils/army";
 import { dailyIncomeFor } from "../game/utils/income";
-import { canAfford, RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
+import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { useMyPlayerId } from "../net/netStore";
 import { SplitDialog } from "./SplitDialog";
+import { BuildingsGrid } from "./town/BuildingsGrid";
 import { MageGuildModal } from "./town/MageGuildModal";
 import { MarketModal } from "./town/MarketModal";
+import { RecruitCard } from "./town/RecruitCard";
 import { TavernModal } from "./town/TavernModal";
 
 export function TownScreen() {
@@ -98,129 +100,22 @@ export function TownScreen() {
               </>
             )}
           </div>
-          <div className="buildings-grid">
-            {buildings.map(b => {
-              const built = town.built.includes(b.id);
-              const prereqsOk = !b.prereq || b.prereq.every(p => town.built.includes(p));
-              const affordable = canAfford(player.resources, b.cost);
-              const canBuild = !built && prereqsOk && affordable && !town.builtToday && canAct;
-              // Здание полностью доступно по prereq + ресурсам, но недоступно только из-за дневного лимита.
-              const lockedByDay = !built && prereqsOk && affordable && town.builtToday;
-              const cls = built
-                ? "built"
-                : !prereqsOk
-                  ? "locked"
-                  : !affordable
-                    ? "cant-afford"
-                    : lockedByDay
-                      ? "locked-today"
-                      : "";
-              const interactive = built && (b.id === "tavern" || b.id === "marketplace" || !!MAGE_GUILD_LEVEL[b.id]);
-              return (
-                <div
-                  key={b.id}
-                  className={`building-card ${cls}`}
-                  style={interactive ? { cursor: "pointer" } : undefined}
-                  onClick={() => handleBuildingClick(b.id, canBuild, built)}
-                  title={
-                    !prereqsOk
-                      ? `Требуется: ${b.prereq?.map(p => getBuilding(town.faction, p)?.name).join(", ")}`
-                      : lockedByDay
-                        ? "Сегодня уже строили в этом городе"
-                        : interactive
-                          ? "Открыть"
-                          : undefined
-                  }
-                >
-                  <div className="bc-row1">
-                    <span className="icon">{b.icon}</span>
-                    <span className="bc-status">
-                      {built ? (
-                        <span style={{ color: "var(--good)" }}>✓ построено</span>
-                      ) : !prereqsOk ? (
-                        <span style={{ color: "var(--text-dim)" }}>🔒 требования</span>
-                      ) : !affordable ? (
-                        <span style={{ color: "var(--danger)" }}>💰 нет ресурсов</span>
-                      ) : lockedByDay ? (
-                        <span style={{ color: "var(--danger)" }}>🔒 сегодня</span>
-                      ) : (
-                        <span style={{ color: "var(--good)" }}>можно построить</span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="name">{b.name}</div>
-                  <div className="desc">{b.description}</div>
-                  {!built && b.prereq && b.prereq.length > 0 && (
-                    <div className="prereq">
-                      Требуется: {b.prereq.map(p => getBuilding(town.faction, p)?.name ?? p).join(", ")}
-                    </div>
-                  )}
-                  {!built && (
-                    <div className="cost">
-                      {Object.entries(b.cost).map(([k, v]) => (
-                        <span key={k}>
-                          {RESOURCE_ICONS[k as keyof ResourceBag]} {v}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <BuildingsGrid town={town} player={player} canAct={canAct} onBuildingClick={handleBuildingClick} />
         </div>
 
         <div className="town-sidebar">
           <h3 style={{ marginTop: 0, color: "var(--gold)" }}>Найм</h3>
           {dwellings.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Постройте жилища.</div>}
-          {dwellings.map(b => {
-            const unitId = b.produces!;
-            const unit = UNITS[unitId];
-            const avail = town.availableUnits[unitId] ?? 0;
-            const canBuyOne = canAfford(player.resources, unit.cost);
-            return (
-              <div className="recruit-card" key={b.id}>
-                <div className="row">
-                  <span className="icon">{unit.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: "bold" }}>
-                      {unit.name}{" "}
-                      <span style={{ color: "var(--text-dim)", fontWeight: "normal", fontSize: 12 }}>
-                        (+{town.built.includes("fort") ? Math.max(1, Math.round(unit.growth * 1.5)) : unit.growth}/нед
-                        {town.built.includes("fort") ? " с фортом" : ""})
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                      Доступно: {avail} | Атк {unit.attack} / Защ {unit.defense} / HP {unit.hp} / Ск {unit.speed}
-                    </div>
-                    <div style={{ fontSize: 11 }}>
-                      {Object.entries(unit.cost).map(([k, v]) => (
-                        <span key={k} style={{ marginRight: 6 }}>
-                          {RESOURCE_ICONS[k as keyof ResourceBag]} {v}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
-                  <button
-                    disabled={avail < 1 || !canBuyOne || !canAct}
-                    onClick={() => hireUnits(town.id, unitId, 1)}
-                    style={{ flex: 1 }}
-                  >
-                    ×1
-                  </button>
-                  <button
-                    disabled={avail < 1 || !canBuyOne || !canAct}
-                    onClick={() => hireUnits(town.id, unitId, avail)}
-                    style={{ flex: 1 }}
-                  >
-                    ×{avail}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          {dwellings.map(b => (
+            <RecruitCard
+              key={b.id}
+              town={town}
+              player={player}
+              dwelling={b}
+              canAct={canAct}
+              onHire={(unitId, count) => hireUnits(town.id, unitId, count)}
+            />
+          ))}
 
           <h3 style={{ color: "var(--gold)", marginTop: 16 }}>
             Гарнизон{" "}
