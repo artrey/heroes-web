@@ -8,10 +8,10 @@ import { getSpell } from "../game/data/spells";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { ArmySlotRef, Faction, Resource, ResourceBag } from "../game/types";
+import { findFirstEmptySlot } from "../game/utils/army";
 import { dailyIncomeFor } from "../game/utils/income";
 import { canAfford, RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { useMyPlayerId } from "../net/netStore";
-import { findFirstEmptySlot } from "./HeroScreen";
 import { SplitDialog } from "./SplitDialog";
 
 const HERO_HIRE_GOLD = 2500;

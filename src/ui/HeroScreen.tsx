@@ -1,12 +1,11 @@
 import { useState } from "react";
 
-import { ARTIFACTS, RARITY_COLOR, SLOT_ICON, SLOT_LABEL } from "../game/data/artifacts";
+import { ARTIFACTS } from "../game/data/artifacts";
 import { FACTION_META } from "../game/data/factions";
 import { getSpell } from "../game/data/spells";
-import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
-import type { ArmySlotRef, ArtifactSlot, UnitStack } from "../game/types";
-import { ARTIFACT_SLOT_ORDER } from "../game/types";
+import type { ArmySlotRef, ArtifactSlot } from "../game/types";
+import { findFirstEmptySlot } from "../game/utils/army";
 import {
   getEffectiveKnowledge,
   getEffectiveMaxMana,
@@ -16,15 +15,10 @@ import {
 } from "../game/utils/heroBonus";
 import { xpToNextLevel } from "../game/utils/leveling";
 import { useMyPlayerId } from "../net/netStore";
+import { ArmyGrid } from "./hero/ArmyGrid";
+import { BackpackGrid } from "./hero/BackpackGrid";
+import { EquippedGrid } from "./hero/EquippedGrid";
 import { SplitDialog } from "./SplitDialog";
-
-// Найти первый пустой слот в армии (0..6). null — если все заняты.
-export function findFirstEmptySlot(army: UnitStack[]): number | null {
-  for (let i = 0; i < 7; i++) {
-    if (!army[i]) return i;
-  }
-  return null;
-}
 
 type Selected =
   | { kind: "army"; slot: number }
@@ -259,78 +253,29 @@ export function HeroScreen() {
 
         <div className="hero-main">
           <h3 style={{ color: "var(--gold)", margin: "0 0 8px" }}>Армия</h3>
-          <div className="hero-army">
-            {Array.from({ length: 7 }).map((_, slot) => {
-              const stack = hero.army[slot];
-              const isSel = selected?.kind === "army" && selected.slot === slot;
-              if (!stack)
-                return (
-                  <div
-                    key={slot}
-                    className={`army-slot empty ${isSel ? "sel" : ""}`}
-                    onClick={ev => clickArmy(slot, ev)}
-                  >
-                    —
-                  </div>
-                );
-              const u = UNITS[stack.unitId];
-              return (
-                <div
-                  key={slot}
-                  className={`army-slot ${isSel ? "sel" : ""}`}
-                  onClick={ev => clickArmy(slot, ev)}
-                  title={`${u.name}: атк ${u.attack + bonus.attack}, защ ${u.defense + bonus.defense}, HP ${u.hp + bonus.hpBonus}, скор ${u.speed + bonus.speed}`}
-                >
-                  <span className="icon">{u.icon}</span>
-                  <span>{stack.count}</span>
-                </div>
-              );
-            })}
-          </div>
+          <ArmyGrid
+            army={hero.army}
+            className="hero-army"
+            isSelected={slot => selected?.kind === "army" && selected.slot === slot}
+            onSlotClick={(slot, ev) => clickArmy(slot, ev)}
+            slotTitle={(_, u) =>
+              `${u.name}: атк ${u.attack + bonus.attack}, защ ${u.defense + bonus.defense}, HP ${u.hp + bonus.hpBonus}, скор ${u.speed + bonus.speed}`
+            }
+          />
 
           <h3 style={{ color: "var(--gold)", margin: "20px 0 8px" }}>Экипировка</h3>
-          <div className="equipped-grid">
-            {ARTIFACT_SLOT_ORDER.map(slot => {
-              const artId = hero.artifacts.equipped[slot];
-              const def = artId ? ARTIFACTS[artId] : null;
-              const isSel = selected?.kind === "equipped" && selected.slot === slot;
-              return (
-                <div
-                  key={slot}
-                  className={`equip-slot ${def ? "filled" : "empty"} ${isSel ? "sel" : ""}`}
-                  style={def ? { borderColor: RARITY_COLOR[def.rarity] } : undefined}
-                  onClick={() => clickEquipped(slot)}
-                  title={def ? `${def.name} — ${def.description}` : `${SLOT_LABEL[slot]} (пусто)`}
-                >
-                  <span className="slot-icon">{def ? def.icon : SLOT_ICON[slot]}</span>
-                  <span className="slot-label">{SLOT_LABEL[slot]}</span>
-                </div>
-              );
-            })}
-          </div>
+          <EquippedGrid
+            artifacts={hero.artifacts}
+            isSelected={slot => selected?.kind === "equipped" && selected.slot === slot}
+            onSlotClick={slot => clickEquipped(slot)}
+          />
 
           <h3 style={{ color: "var(--gold)", margin: "20px 0 8px" }}>Рюкзак ({hero.artifacts.backpack.length})</h3>
-          <div className="backpack-grid">
-            {hero.artifacts.backpack.length === 0 && (
-              <div style={{ color: "var(--text-dim)", fontSize: 12, padding: "8px 0" }}>Пусто</div>
-            )}
-            {hero.artifacts.backpack.map((aid, idx) => {
-              const def = ARTIFACTS[aid];
-              const isSel = selected?.kind === "backpack" && selected.idx === idx;
-              return (
-                <div
-                  key={idx}
-                  className={`artifact-slot ${isSel ? "sel" : ""}`}
-                  style={{ borderColor: RARITY_COLOR[def.rarity] }}
-                  onClick={() => clickBackpack(idx)}
-                  title={`${def.name} — ${def.description}`}
-                >
-                  <span style={{ fontSize: 24 }}>{def.icon}</span>
-                  <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{def.name}</span>
-                </div>
-              );
-            })}
-          </div>
+          <BackpackGrid
+            backpack={hero.artifacts.backpack}
+            isSelected={idx => selected?.kind === "backpack" && selected.idx === idx}
+            onSlotClick={idx => clickBackpack(idx)}
+          />
 
           <h3 style={{ color: "var(--gold)", margin: "20px 0 8px" }}>
             Заклинания ({hero.spells.length}){" "}

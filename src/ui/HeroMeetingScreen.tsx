@@ -1,11 +1,10 @@
 import { useState } from "react";
 
-import { ARTIFACTS, RARITY_COLOR, SLOT_ICON, SLOT_LABEL } from "../game/data/artifacts";
+import { ARTIFACTS } from "../game/data/artifacts";
 import { FACTION_META } from "../game/data/factions";
-import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
-import { ARTIFACT_SLOT_ORDER } from "../game/types";
 import type { ArmySlotRef, ArtifactSlot, Hero } from "../game/types";
+import { findFirstEmptySlot } from "../game/utils/army";
 import {
   getEffectiveKnowledge,
   getEffectiveMaxMana,
@@ -13,7 +12,9 @@ import {
   getHeroBonus,
 } from "../game/utils/heroBonus";
 import { useMyPlayerId } from "../net/netStore";
-import { findFirstEmptySlot } from "./HeroScreen";
+import { ArmyGrid } from "./hero/ArmyGrid";
+import { BackpackGrid } from "./hero/BackpackGrid";
+import { EquippedGrid } from "./hero/EquippedGrid";
 import { SplitDialog } from "./SplitDialog";
 
 type Selected =
@@ -295,69 +296,26 @@ function HeroPanel({
       <BonusBreakdown base={base} lvl={lvl} gear={gear} />
 
       <h4 style={{ color: "var(--gold)", margin: "16px 0 6px" }}>Армия</h4>
-      <div className="meeting-army">
-        {Array.from({ length: 7 }).map((_, slot) => {
-          const stack = hero.army[slot];
-          const isSel = selected?.kind === "army" && selected.heroId === hero.id && selected.slot === slot;
-          if (!stack)
-            return (
-              <div key={slot} className={`army-slot empty ${isSel ? "sel" : ""}`} onClick={ev => onArmy(slot, ev)}>
-                —
-              </div>
-            );
-          const u = UNITS[stack.unitId];
-          return (
-            <div key={slot} className={`army-slot ${isSel ? "sel" : ""}`} onClick={ev => onArmy(slot, ev)}>
-              <span className="icon">{u.icon}</span>
-              <span>{stack.count}</span>
-            </div>
-          );
-        })}
-      </div>
+      <ArmyGrid
+        army={hero.army}
+        className="meeting-army"
+        isSelected={slot => selected?.kind === "army" && selected.heroId === hero.id && selected.slot === slot}
+        onSlotClick={(slot, ev) => onArmy(slot, ev)}
+      />
 
       <h4 style={{ color: "var(--gold)", margin: "16px 0 6px" }}>Экипировка</h4>
-      <div className="equipped-grid">
-        {ARTIFACT_SLOT_ORDER.map(slot => {
-          const artId = hero.artifacts.equipped[slot];
-          const isSel = selected?.kind === "equipped" && selected.heroId === hero.id && selected.slot === slot;
-          const def = artId ? ARTIFACTS[artId] : null;
-          return (
-            <div
-              key={slot}
-              className={`equip-slot ${def ? "filled" : "empty"} ${isSel ? "sel" : ""}`}
-              style={def ? { borderColor: RARITY_COLOR[def.rarity] } : undefined}
-              onClick={() => onEquipped(slot)}
-              title={def ? `${def.name} — ${def.description}` : `${SLOT_LABEL[slot]} (пусто)`}
-            >
-              <span className="slot-icon">{def ? def.icon : SLOT_ICON[slot]}</span>
-              <span className="slot-label">{SLOT_LABEL[slot]}</span>
-            </div>
-          );
-        })}
-      </div>
+      <EquippedGrid
+        artifacts={hero.artifacts}
+        isSelected={slot => selected?.kind === "equipped" && selected.heroId === hero.id && selected.slot === slot}
+        onSlotClick={slot => onEquipped(slot)}
+      />
 
       <h4 style={{ color: "var(--gold)", margin: "16px 0 6px" }}>Рюкзак ({hero.artifacts.backpack.length})</h4>
-      <div className="backpack-grid">
-        {hero.artifacts.backpack.length === 0 && (
-          <div style={{ color: "var(--text-dim)", fontSize: 12, padding: "8px 0" }}>Пусто</div>
-        )}
-        {hero.artifacts.backpack.map((id, idx) => {
-          const def = ARTIFACTS[id];
-          const isSel = selected?.kind === "backpack" && selected.heroId === hero.id && selected.idx === idx;
-          return (
-            <div
-              key={idx}
-              className={`artifact-slot ${isSel ? "sel" : ""}`}
-              style={{ borderColor: RARITY_COLOR[def.rarity] }}
-              onClick={() => onBackpack(idx)}
-              title={`${def.name} — ${def.description}`}
-            >
-              <span style={{ fontSize: 24 }}>{def.icon}</span>
-              <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{def.name}</span>
-            </div>
-          );
-        })}
-      </div>
+      <BackpackGrid
+        backpack={hero.artifacts.backpack}
+        isSelected={idx => selected?.kind === "backpack" && selected.heroId === hero.id && selected.idx === idx}
+        onSlotClick={idx => onBackpack(idx)}
+      />
     </div>
   );
 }
