@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { useNet } from "../net/netStore";
+import { ANIM_SPEED_SCALE, useSettings } from "../ui/settingsStore";
 import {
   doAttack,
   doCastSpell,
@@ -125,6 +126,7 @@ const initialState: GameState = {
   meetingHeroIds: null,
   pendingObjectVisit: null,
   pendingMoveAfterCombat: null,
+  pendingInteraction: null,
   options: null,
   log: [],
   winnerId: null,
@@ -178,6 +180,9 @@ interface Actions {
   battleRunAuto: () => void;
   endBattleVictory: () => void;
   endBattleDefeat: () => void;
+  // Завершить отложенную интеракцию: вызвать interactWithObject. Дергается UI после
+  // окончания анимации перемещения; для ИИ — после await паузы анимации.
+  commitInteraction: () => void;
   reset: () => void;
 }
 
@@ -336,6 +341,7 @@ export const useGame = create<GameState & Actions>()(
           log: [logLine(1, "Игра началась.")],
           battle: null,
           pendingObjectVisit: null,
+          pendingInteraction: null,
           winnerId: null,
         });
       },
@@ -471,12 +477,14 @@ export const useGame = create<GameState & Actions>()(
           s.map.height,
         );
         const players = { ...s.players, [hero.ownerId]: updatedOwner };
-        set({ heroes, players });
-
+        // Если на пути есть интерактивный объект — откладываем взаимодействие до
+        // конца анимации движения. commitInteraction вызовет UI, когда герой
+        // визуально доедет до клетки.
         if (triggered) {
-          interactWithObject(triggered, hero.id);
+          set({ heroes, players, pendingInteraction: { objectId: triggered, heroId: hero.id } });
           return "interaction";
         }
+        set({ heroes, players });
         if (newHero.movePoints < STEP_STRAIGHT) return "noPoints";
         return "ok";
       }),
@@ -1171,6 +1179,23 @@ export const useGame = create<GameState & Actions>()(
         }
       }),
 
+      commitInteraction: gate("commitInteraction", () => {
+        const s = get();
+        const p = s.pendingInteraction;
+        if (!p) return;
+        set({ pendingInteraction: null });
+        interactWithObject(p.objectId, p.heroId);
+        // Если интеракция запустила бой и атакующий — ИИ, прогоним его автоматически.
+        const after = get();
+        if (after.battle) {
+          const attacker = after.heroes[after.battle.attackerHeroId];
+          const attackerOwner = attacker ? after.players[attacker.ownerId] : null;
+          if (attackerOwner && !attackerOwner.isHuman) {
+            runAiBattle();
+          }
+        }
+      }),
+
       endBattleDefeat: gate("endBattleDefeat", () => {
         const s = get();
         const b = s.battle;
@@ -1209,7 +1234,7 @@ export const useGame = create<GameState & Actions>()(
       name: "heroes-web-save",
       // v6 — baseline после релиза. С этой точки любое изменение формата
       // ОБЯЗАНО сопровождаться миграцией в migrate() ниже, а не просто бампом version.
-      version: 11,
+      version: 12,
       migrate: (persisted, fromVersion) => {
         const state = persisted as Partial<GameState>;
         // Сейвы версий < 6 — времён до релиза, формат менялся свободно. Их не мигрируем,
@@ -1294,6 +1319,11 @@ export const useGame = create<GameState & Actions>()(
           // появилось поле defendDefenseBonus. Активный бой роняем.
           state.battle = null;
           if (state.phase === "battle") state.phase = "adventure";
+        }
+        if (fromVersion < 12) {
+          // v12: добавлено pendingInteraction — отложенная интеракция с объектом
+          // на карте до окончания анимации перемещения героя.
+          state.pendingInteraction = null;
         }
         // Сюда добавляются ветки `if (fromVersion < N) { ... }` для каждой будущей версии.
         return state as GameState;
@@ -1625,7 +1655,7 @@ function captureTown(townId: string, newOwnerId: string) {
 
 // =================== ИИ КАРТЫ ===================
 
-function runAiTurn() {
+async function runAiTurn() {
   const game = useGame.getState();
   const pid = game.activePlayerId;
   const player = game.players[pid];
@@ -1669,6 +1699,9 @@ function runAiTurn() {
     }
   }
   // 3) Движение героев. Простая логика: идти к ближайшему ресурсу/шахте/городу/герою противника.
+  // Между шагами держим паузу, пропорциональную animSpeed — иначе игрок не успевает увидеть,
+  // куда ИИ перемещался, потому что несколько setState'ов внутри одного синхронного блока
+  // схлопываются в один ре-рендер UI.
   const heroIds = useGame.getState().players[pid].heroIds.slice();
   for (const hid of heroIds) {
     if (useGame.getState().battle) return; // если ИИ ввязался в бой — выходим.
@@ -1683,8 +1716,19 @@ function runAiTurn() {
       const map = useGame.getState().map!;
       const path = findPath(map, hero.pos, target);
       if (!path || path.length === 0) break;
-      // Будем идти по path по тайлам, пока хватает MP или не встретим объект.
+      const beforePos = { ...hero.pos };
       moveAiHero(hid, target);
+      // Дать UI отрисовать перемещение героя до следующего шага.
+      const heroAfter = useGame.getState().heroes[hid];
+      if (heroAfter && (heroAfter.pos.x !== beforePos.x || heroAfter.pos.y !== beforePos.y)) {
+        await waitForAiMoveAnim(beforePos, heroAfter.pos, map);
+      }
+      // Если героем была запланирована интеракция с объектом (ресурс/шахта/монстр),
+      // выполняем её ПОСЛЕ окончания анимации — иначе предмет пропадает с карты
+      // прямо в момент клика, а герой едет на пустую клетку.
+      if (useGame.getState().pendingInteraction) {
+        useGame.getState().commitInteraction();
+      }
       if (useGame.getState().battle) return;
     }
   }
@@ -1692,6 +1736,17 @@ function runAiTurn() {
   if (!useGame.getState().battle) {
     setTimeout(() => useGame.getState().endTurn(), 50);
   }
+}
+
+// Длительность паузы между шагами ИИ ≈ длительности анимации движения на карте
+// (см. AdventureScreen). Если игрок выбрал «мгновенно» — без пауз.
+function waitForAiMoveAnim(from: Coord, to: Coord, map: NonNullable<ReturnType<typeof useGame.getState>["map"]>) {
+  const scale = ANIM_SPEED_SCALE[useSettings.getState().animSpeed];
+  if (scale === 0) return Promise.resolve();
+  const path = findPath(map, from, to);
+  const steps = path && path.length > 0 ? path.length : Math.max(1, chebyshev(from, to));
+  const ms = Math.min(900, 120 * steps) * scale + 40;
+  return new Promise<void>(resolve => setTimeout(resolve, ms));
 }
 
 function pickAiTarget(hero: Hero): Coord | null {
@@ -1793,9 +1848,11 @@ function moveAiHero(heroId: string, target: Coord) {
     }
     return;
   }
+  // Объектную интеракцию НЕ запускаем здесь — её закоммитит runAiTurn после
+  // окончания анимации, чтобы предмет/монстр визуально оставался на карте, пока
+  // герой к нему доходит.
   if (triggered) {
-    interactWithObject(triggered, heroId);
-    if (useGame.getState().battle) runAiBattle();
+    useGame.setState({ pendingInteraction: { objectId: triggered, heroId } });
   }
 }
 

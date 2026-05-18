@@ -18,12 +18,20 @@ import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
 import { computeVisibleTiles } from "../game/utils/visibility";
 import { computeDanger } from "../game/utils/zoc";
 import { useNet } from "../net/netStore";
+import { AnimSpeedToggle } from "./AnimSpeedToggle";
+import { ANIM_SPEED_SCALE, useSettings } from "./settingsStore";
 import { getTerrainBaseColor, getTerrainTile } from "./terrainPatterns";
 
 const TILE_SIZE = 32;
 // Сколько клеток «воздуха» можно прокрутить за реальные границы карты,
 // чтобы содержимое не упиралось в края экрана и боковую панель.
 const EDGE_PADDING_TILES = 5;
+
+// Прошлые позиции героев живут на уровне модуля, а не в useRef. AdventureScreen
+// размонтируется на время боя (App.tsx показывает BattleScreen поверх), и если
+// бы prev хранился в ref, после боя он был бы пустым — и следующий ход ИИ
+// рендерился мгновенно, без анимации. Module-scope сохраняет базу сравнения.
+const prevHeroPosRegistry: Record<string, Coord> = {};
 
 const TERRAIN_COLOR: Record<string, string> = {
   grass: "#3a5a2a",
@@ -57,12 +65,32 @@ export function AdventureScreen() {
   const selectHero = useGame(s => s.selectHero);
   const endTurn = useGame(s => s.endTurn);
   const openTown = useGame(s => s.openTown);
+  const pendingInteraction = useGame(s => s.pendingInteraction);
+
+  const animSpeed = useSettings(s => s.animSpeed);
 
   const [camera, setCamera] = useState<Coord>({ x: 0, y: 0 });
   const [hoverPath, setHoverPath] = useState<Coord[] | null>(null);
   const [hoverTile, setHoverTile] = useState<Coord | null>(null);
   // Drag-панорамирование средней/правой кнопкой. Храним в ref, чтобы не плодить ре-рендеры.
   const panRef = useRef<{ startX: number; startY: number; camX: number; camY: number } | null>(null);
+
+  // Локальная анимация движения героя по карте. В state хранится только финальная
+  // позиция, а пройденный путь восстанавливаем через findPath между prev и current —
+  // плюс используем плановый путь, если он есть после клика. Анимация — чисто UI-слой,
+  // на стор не пишем, миграции не нужны.
+  const heroAnimRef = useRef<{
+    heroId: string;
+    path: Coord[]; // включая старт и финал
+    startTs: number;
+    durationMs: number;
+  } | null>(null);
+  // Плановый путь, если игрок только что кликнул куда-то — нужен, чтобы анимация
+  // шла именно по тому маршруту, который выбрал A* (с учётом объектов/danger).
+  const plannedPathRef = useRef<{ heroId: string; from: Coord; path: Coord[] } | null>(null);
+  const animRafRef = useRef<number | null>(null);
+  // Триггер для force-redraw'a карты во время анимации.
+  const [animTick, setAnimTick] = useState(0);
 
   const activePlayer = players[activePlayerId];
   // В мультиплеере «мой игрок» — это playerId, назначенный хостом. Берём:
@@ -134,6 +162,124 @@ export function AdventureScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHeroId, map]);
 
+  // Запускаем анимацию: смотрим, у кого из героев позиция изменилась с прошлого рендера.
+  useEffect(() => {
+    if (!map) return;
+    const prev = prevHeroPosRegistry;
+    const scale = ANIM_SPEED_SCALE[animSpeed];
+    let started: typeof heroAnimRef.current = null;
+    for (const h of Object.values(heroes)) {
+      const p = prev[h.id];
+      if (p && (p.x !== h.pos.x || p.y !== h.pos.y) && scale > 0) {
+        // Пробуем взять плановый путь, который положил handleClick перед moveHeroTo.
+        let segments: Coord[] | null = null;
+        const planned = plannedPathRef.current;
+        if (planned && planned.heroId === h.id && planned.from.x === p.x && planned.from.y === p.y) {
+          // Берём префикс планового пути до фактической финальной позиции героя.
+          const idx = planned.path.findIndex(c => c.x === h.pos.x && c.y === h.pos.y);
+          if (idx >= 0) segments = planned.path.slice(0, idx + 1);
+        }
+        plannedPathRef.current = null;
+        if (!segments) {
+          // Фолбэк: восстановить путь через findPath (полезно для чужих героев / ИИ).
+          // Без danger/revealed, иначе путь может не найтись.
+          const path = findPath(map, p, h.pos);
+          segments = path && path.length > 0 ? path : [h.pos];
+        }
+        const fullPath: Coord[] = [p, ...segments];
+        const steps = Math.max(1, fullPath.length - 1);
+        started = {
+          heroId: h.id,
+          path: fullPath,
+          startTs: performance.now(),
+          durationMs: Math.min(900, 120 * steps) * scale,
+        };
+      }
+      prev[h.id] = h.pos;
+    }
+    // Подчищаем prev от удалённых героев, чтобы Map не разрастался.
+    for (const id of Object.keys(prev)) {
+      if (!heroes[id]) delete prev[id];
+    }
+    if (started) {
+      heroAnimRef.current = started;
+      ensureAnimRaf();
+    } else if (scale === 0) {
+      // Если выключили анимацию по ходу — сбрасываем активную, чтобы не доигрывалась.
+      plannedPathRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heroes, map, animSpeed]);
+
+  // Один rAF-цикл, который дёргает animTick — useEffect ниже перерисовывает карту.
+  function ensureAnimRaf() {
+    if (animRafRef.current !== null) return;
+    const loop = () => {
+      const a = heroAnimRef.current;
+      if (!a) {
+        animRafRef.current = null;
+        return;
+      }
+      const now = performance.now();
+      if (now >= a.startTs + a.durationMs) {
+        heroAnimRef.current = null;
+        setAnimTick(t => t + 1);
+        animRafRef.current = null;
+        return;
+      }
+      setAnimTick(t => t + 1);
+      animRafRef.current = requestAnimationFrame(loop);
+    };
+    animRafRef.current = requestAnimationFrame(loop);
+  }
+
+  // Останов rAF при размонтировании компонента.
+  useEffect(() => {
+    return () => {
+      if (animRafRef.current !== null) cancelAnimationFrame(animRafRef.current);
+      animRafRef.current = null;
+      heroAnimRef.current = null;
+    };
+  }, []);
+
+  // Сброс реестра предыдущих позиций при смене карты (новая игра / загрузка):
+  // иначе старые координаты погибших героев останутся в module-scope.
+  useEffect(() => {
+    if (!map) {
+      for (const id of Object.keys(prevHeroPosRegistry)) delete prevHeroPosRegistry[id];
+    }
+  }, [map]);
+
+  // Закоммитить отложенную интеракцию, когда анимация перемещения героя
+  // завершилась. Если анимаций нет вовсе (скорость «мгновенно») — коммитим
+  // сразу же, чтобы поведение совпадало со старым.
+  useEffect(() => {
+    if (!pendingInteraction) return;
+    if (heroAnimRef.current && heroAnimRef.current.heroId === pendingInteraction.heroId) {
+      // Подождём — rAF-цикл сам пере-вызовет этот эффект через animTick.
+      return;
+    }
+    useGame.getState().commitInteraction();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingInteraction, animTick]);
+
+  // Текущие визуальные (sub-tile) позиции героев на основе активной анимации.
+  function computeHeroVisualPos(): Record<string, Coord> {
+    const a = heroAnimRef.current;
+    if (!a) return {};
+    const segs = a.path.length - 1;
+    if (segs <= 0) return {};
+    const now = performance.now();
+    const elapsed = Math.max(0, Math.min(a.durationMs, now - a.startTs));
+    const progress = a.durationMs > 0 ? elapsed / a.durationMs : 1;
+    const totalSegProg = progress * segs;
+    const i = Math.min(segs - 1, Math.floor(totalSegProg));
+    const t = totalSegProg - i;
+    const aP = a.path[i];
+    const bP = a.path[i + 1];
+    return { [a.heroId]: { x: aP.x + (bP.x - aP.x) * t, y: aP.y + (bP.y - aP.y) * t } };
+  }
+
   // Рендер карты.
   useEffect(() => {
     if (!map || !canvasRef.current) return;
@@ -153,8 +299,10 @@ export function AdventureScreen() {
       revealed,
       visible,
       danger,
+      computeHeroVisualPos(),
     );
-  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible, danger]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible, danger, animTick]);
 
   // Автоскролл лога вниз при появлении новых записей.
   useEffect(() => {
@@ -187,12 +335,14 @@ export function AdventureScreen() {
             revealed,
             visible,
             danger,
+            computeHeroVisualPos(),
           );
       }
     }
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible, danger]);
 
   if (!map) return null;
@@ -269,6 +419,13 @@ export function AdventureScreen() {
       centerCameraOnTile(mm.x, mm.y);
       return;
     }
+    // Если есть незакоммиченная интеракция — сначала её закроем (повторный клик
+    // не должен «съесть» отложенный подбор предмета). Возвращаемся: игрок увидит
+    // результат и сделает следующий клик уже в актуальном состоянии.
+    if (useGame.getState().pendingInteraction) {
+      useGame.getState().commitInteraction();
+      return;
+    }
     const t = clickToTile(ev);
     if (!t) return;
     const tile = map!.tiles[t.y * map!.width + t.x];
@@ -293,7 +450,10 @@ export function AdventureScreen() {
       if (tw && tw.ownerId === myPlayer?.id) {
         const heroOnTown = selectedHero && selectedHero.pos.x === tw.pos.x && selectedHero.pos.y === tw.pos.y;
         if (canMoveSelected && !heroOnTown) {
-          if (selectedHeroId) moveHeroTo(t, selectedHeroId);
+          if (selectedHeroId) {
+            recordPlannedPath(selectedHeroId, t);
+            moveHeroTo(t, selectedHeroId);
+          }
           return;
         }
         openTown(tw.id);
@@ -301,7 +461,28 @@ export function AdventureScreen() {
       }
     }
     // Любая другая клетка — двигаем выбранного героя.
-    if (canMoveSelected && selectedHeroId) moveHeroTo(t, selectedHeroId);
+    if (canMoveSelected && selectedHeroId) {
+      recordPlannedPath(selectedHeroId, t);
+      moveHeroTo(t, selectedHeroId);
+    }
+  }
+
+  // Перед вызовом moveHeroTo запоминаем тот же путь, что и для подсветки. Используется
+  // в анимации, чтобы перемещение шло именно по выбранному A*-маршруту (через те же
+  // объекты/danger), а не по приблизительному пути от prev до new.
+  function recordPlannedPath(heroId: string, target: Coord) {
+    const hero = heroes[heroId];
+    if (!hero || !map) return;
+    const path = findPath(map, hero.pos, target, {
+      revealed,
+      dangerCells: danger.cells,
+      dangerSources: danger.sources,
+    });
+    if (path && path.length > 0) {
+      plannedPathRef.current = { heroId, from: { ...hero.pos }, path };
+    } else {
+      plannedPathRef.current = null;
+    }
   }
 
   function handleMouseDown(ev: React.MouseEvent) {
@@ -387,6 +568,7 @@ export function AdventureScreen() {
             );
           })}
         </div>
+        <AnimSpeedToggle compact />
         <button onClick={() => useGame.getState().goToMenu()}>Меню</button>
       </div>
 
@@ -550,6 +732,7 @@ function drawMap(
   revealed: Record<string, true>,
   visible: Set<string>,
   danger: { cells: Set<string>; sources: Set<string> },
+  heroVisualPos: Record<string, Coord> = {},
 ) {
   const W = map.width;
   const H = map.height;
@@ -624,10 +807,13 @@ function drawMap(
   }
 
   // Герои — только если стоят на видимой прямо сейчас клетке.
+  // Анимированному герою рисуем по интерполированной (sub-tile) позиции, но
+  // visible/clipping считаем от его «логической» клетки в state.
   for (const h of Object.values(heroes)) {
     if (!visible.has(`${h.pos.x},${h.pos.y}`)) continue;
-    const sx = h.pos.x * TILE_SIZE - camera.x;
-    const sy = h.pos.y * TILE_SIZE - camera.y;
+    const draw = heroVisualPos[h.id] ?? h.pos;
+    const sx = draw.x * TILE_SIZE - camera.x;
+    const sy = draw.y * TILE_SIZE - camera.y;
     if (sx < -TILE_SIZE || sy < -TILE_SIZE || sx > cw || sy > ch) continue;
     const owner = players[h.ownerId];
     const color = owner?.color ?? "#888";

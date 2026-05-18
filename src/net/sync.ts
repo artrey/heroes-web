@@ -38,6 +38,7 @@ export const NETWORKED_ACTIONS = [
   "battleRunAuto",
   "endBattleVictory",
   "endBattleDefeat",
+  "commitInteraction",
 ] as const;
 
 export type NetworkedActionName = (typeof NETWORKED_ACTIONS)[number];
@@ -64,6 +65,7 @@ export function snapshotGameState(s: GameState): Partial<GameState> {
     map: s.map,
     battle: s.battle,
     pendingMoveAfterCombat: s.pendingMoveAfterCombat,
+    pendingInteraction: s.pendingInteraction,
     options: s.options,
     log: s.log,
     winnerId: s.winnerId,

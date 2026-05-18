@@ -341,6 +341,12 @@ export interface GameState {
   pendingObjectVisit: string | null;
   // Цель, к которой герой направлялся через бой со стражей: после победы движение продолжается.
   pendingMoveAfterCombat: { heroId: string; target: Coord } | null;
+  // Отложенная интеракция с объектом: герой уже шагнул на/к объекту, но
+  // визуально ещё идёт анимация перемещения. Сам взаимодействие (подбор предмета,
+  // захват шахты, запуск боя с монстром) выполняется после её окончания через
+  // commitInteraction — иначе игрок видит «кликнул → предмет исчез → герой едет
+  // на пустую клетку».
+  pendingInteraction: { objectId: string; heroId: string } | null;
   options: NewGameOptions | null;
   log: string[];
   winnerId: string | null;

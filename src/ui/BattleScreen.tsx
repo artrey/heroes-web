@@ -21,11 +21,37 @@ import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { BattleStack, BattleState, Coord } from "../game/types";
 import { useNet } from "../net/netStore";
+import { AnimSpeedToggle } from "./AnimSpeedToggle";
+import { ANIM_SPEED_SCALE, useSettings } from "./settingsStore";
 
 const HEX_W = 56;
 const HEX_H = 48;
 const FIELD_W = HEX_W * BATTLE_W + 40;
 const FIELD_H = HEX_H * BATTLE_H + 40;
+
+// Длительность анимации перемещения стека на одну клетку (octile-метрика).
+const BATTLE_MOVE_MS_PER_TILE = 80;
+// Длительность красного flash'а при получении урона.
+const BATTLE_HIT_FLASH_MS = 260;
+// Длительность «выпада» атакующего при ударе/выстреле.
+const BATTLE_LUNGE_MS = 240;
+
+interface BattleMoveAnim {
+  stackId: string;
+  from: Coord;
+  to: Coord;
+  startTs: number;
+  durationMs: number;
+}
+
+interface BattleLungeAnim {
+  stackId: string;
+  // Куда направлен «выпад» (центр клетки цели), в координатах боевого канваса.
+  toX: number;
+  toY: number;
+  startTs: number;
+  durationMs: number;
+}
 
 export function BattleScreen() {
   const battle = useGame(s => s.battle);
@@ -39,6 +65,22 @@ export function BattleScreen() {
   // Открытая модалка спеллбука и режим выбора цели для заклинания.
   const [showSpells, setShowSpells] = useState(false);
   const [castSpellId, setCastSpellId] = useState<string | null>(null);
+
+  const animSpeed = useSettings(s => s.animSpeed);
+
+  // ---- Анимации боя ----
+  // Перемещение стека (один за раз — параллельных ходов в системе боя нет).
+  const moveAnimRef = useRef<BattleMoveAnim | null>(null);
+  // Короткий «выпад» атакующего к цели при ударе/выстреле.
+  const lungeAnimRef = useRef<BattleLungeAnim | null>(null);
+  // stackId -> момент окончания flash'а получения урона.
+  const flashEndRef = useRef<Record<string, number>>({});
+  // Снапшот предыдущего состояния стеков, чтобы по изменению pos/count/hp/shots понять,
+  // какие анимации запускать.
+  const prevStacksRef = useRef<Record<string, { pos: Coord; count: number; hp: number; shots: number }>>({});
+  const animRafRef = useRef<number | null>(null);
+  // Триггер force-redraw'а канваса в кадре rAF.
+  const [animTick, setAnimTick] = useState(0);
 
   // Когда бой заканчивается — закрываем экран через действие store. В MP клиент
   // ничего не закрывает сам, ждёт state от хоста (иначе летят дубли-сообщений).
@@ -80,17 +122,205 @@ export function BattleScreen() {
     if (isAi) {
       // ИИ-шаг гоняет только host (или sp). Клиент ждёт state от хоста.
       if (useNet.getState().role === "client") return;
-      const t = setTimeout(() => useGame.getState().battleStepAi(), 500);
+      // Дадим анимации доиграться до конца, а при instant — минимальная пауза,
+      // чтобы прогон боя не сливался в одну вспышку.
+      const scale = ANIM_SPEED_SCALE[animSpeed];
+      const delay = Math.max(100, 500 * scale);
+      const t = setTimeout(() => useGame.getState().battleStepAi(), delay);
       return () => clearTimeout(t);
     }
-  }, [battle, heroes, players, activePlayerId]);
+  }, [battle, heroes, players, activePlayerId, animSpeed]);
+
+  // Запуск анимаций на изменение состояния боя.
+  useEffect(() => {
+    if (!battle) {
+      // Бой закончился/закрыт — обнулим всё.
+      moveAnimRef.current = null;
+      lungeAnimRef.current = null;
+      flashEndRef.current = {};
+      prevStacksRef.current = {};
+      return;
+    }
+    const prev = prevStacksRef.current;
+    const now = performance.now();
+    const scale = ANIM_SPEED_SCALE[animSpeed];
+    // Перемещение: ищем стек, у которого изменилась pos.
+    let move: BattleMoveAnim | null = null;
+    let moveEndTs = now;
+    if (scale > 0) {
+      for (const s of battle.stacks) {
+        const p = prev[s.id];
+        if (!p || s.count <= 0) continue;
+        if (p.pos.x !== s.pos.x || p.pos.y !== s.pos.y) {
+          const dx = Math.abs(s.pos.x - p.pos.x);
+          const dy = Math.abs(s.pos.y - p.pos.y);
+          const dist = Math.max(dx, dy);
+          const durationMs = Math.max(120, BATTLE_MOVE_MS_PER_TILE * dist) * scale;
+          move = {
+            stackId: s.id,
+            from: { ...p.pos },
+            to: { ...s.pos },
+            startTs: now,
+            durationMs,
+          };
+          moveEndTs = now + durationMs;
+          break;
+        }
+      }
+    }
+    if (move) moveAnimRef.current = move;
+
+    // Урон: у кого упал count или (count тот же, hp упал) — flash.
+    // Если в этом же тике кто-то двигался, откладываем flash до конца движения,
+    // чтобы атакующий «доходил» до цели до начала вспышки.
+    if (scale > 0) {
+      for (const s of battle.stacks) {
+        const p = prev[s.id];
+        if (!p) continue;
+        const tookDamage = s.count < p.count || (s.count === p.count && s.hp < p.hp);
+        if (tookDamage) {
+          flashEndRef.current[s.id] = moveEndTs + BATTLE_HIT_FLASH_MS * scale;
+        }
+      }
+    }
+
+    // «Выпад» атакующего: эвристика. Берём активный стек и ищем жертву — соседа,
+    // у которого упало hp/count, либо любую жертву с упавшим hp при уменьшении
+    // shots у активного (это значит — был выстрел).
+    if (scale > 0) {
+      const actId = battle.turnOrder[battle.activeStackIdx];
+      const act = battle.stacks.find(st => st.id === actId);
+      const prevAct = act ? prev[act.id] : null;
+      if (act && prevAct && act.count > 0) {
+        const didShoot = act.shots < prevAct.shots;
+        const victim = battle.stacks.find(s => {
+          if (s.id === act.id) return false;
+          const p = prev[s.id];
+          if (!p) return false;
+          return s.count < p.count || (s.count === p.count && s.hp < p.hp);
+        });
+        if (victim) {
+          const adjacent = Math.max(Math.abs(victim.pos.x - act.pos.x), Math.abs(victim.pos.y - act.pos.y)) === 1;
+          if (adjacent || didShoot) {
+            lungeAnimRef.current = {
+              stackId: act.id,
+              toX: 20 + victim.pos.x * HEX_W + HEX_W / 2,
+              toY: 20 + victim.pos.y * HEX_H + HEX_H / 2,
+              startTs: moveEndTs,
+              durationMs: BATTLE_LUNGE_MS * scale,
+            };
+          }
+        }
+      }
+    }
+
+    // Сохранить новый снапшот для следующего тика.
+    const snapshot: Record<string, { pos: Coord; count: number; hp: number; shots: number }> = {};
+    for (const s of battle.stacks) {
+      snapshot[s.id] = { pos: { ...s.pos }, count: s.count, hp: s.hp, shots: s.shots };
+    }
+    prevStacksRef.current = snapshot;
+
+    if (scale === 0) {
+      // На «мгновенно» очистим всё активное, чтобы канвас сразу прыгнул в свежее состояние.
+      moveAnimRef.current = null;
+      lungeAnimRef.current = null;
+      flashEndRef.current = {};
+      setAnimTick(t => t + 1);
+    } else if (move || lungeAnimRef.current || Object.keys(flashEndRef.current).length > 0) {
+      ensureAnimRaf();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [battle, animSpeed]);
+
+  function ensureAnimRaf() {
+    if (animRafRef.current !== null) return;
+    const loop = () => {
+      const now = performance.now();
+      let alive = false;
+      const move = moveAnimRef.current;
+      if (move) {
+        if (now >= move.startTs + move.durationMs) moveAnimRef.current = null;
+        else alive = true;
+      }
+      const lunge = lungeAnimRef.current;
+      if (lunge) {
+        if (now >= lunge.startTs + lunge.durationMs) lungeAnimRef.current = null;
+        else alive = true;
+      }
+      for (const id of Object.keys(flashEndRef.current)) {
+        if (now >= flashEndRef.current[id]) delete flashEndRef.current[id];
+        else alive = true;
+      }
+      setAnimTick(t => t + 1);
+      if (alive) {
+        animRafRef.current = requestAnimationFrame(loop);
+      } else {
+        animRafRef.current = null;
+      }
+    };
+    animRafRef.current = requestAnimationFrame(loop);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (animRafRef.current !== null) cancelAnimationFrame(animRafRef.current);
+      animRafRef.current = null;
+    };
+  }, []);
+
+  function computeStackVisual(): {
+    pos: Record<string, Coord>;
+    flash: Record<string, number>;
+    lunge: { stackId: string; offX: number; offY: number } | null;
+  } {
+    const result: ReturnType<typeof computeStackVisual> = { pos: {}, flash: {}, lunge: null };
+    const now = performance.now();
+    const move = moveAnimRef.current;
+    if (move) {
+      const elapsed = Math.max(0, Math.min(move.durationMs, now - move.startTs));
+      const t = move.durationMs > 0 ? elapsed / move.durationMs : 1;
+      // ease-out, чтобы перемещение было «бодрым» на старте и плавно тормозило к финалу.
+      const eased = 1 - Math.pow(1 - t, 2);
+      result.pos[move.stackId] = {
+        x: move.from.x + (move.to.x - move.from.x) * eased,
+        y: move.from.y + (move.to.y - move.from.y) * eased,
+      };
+    }
+    for (const [id, endTs] of Object.entries(flashEndRef.current)) {
+      const remaining = endTs - now;
+      if (remaining <= 0) continue;
+      const phase = Math.max(0, Math.min(1, remaining / BATTLE_HIT_FLASH_MS));
+      result.flash[id] = phase;
+    }
+    const lunge = lungeAnimRef.current;
+    if (lunge && now >= lunge.startTs) {
+      const t = Math.max(0, Math.min(1, (now - lunge.startTs) / lunge.durationMs));
+      // Треугольная функция: 0 → 1 → 0 за фазу.
+      const k = t < 0.5 ? t * 2 : (1 - t) * 2;
+      const stack = battle?.stacks.find(s => s.id === lunge.stackId);
+      if (stack) {
+        const baseX = 20 + stack.pos.x * HEX_W + HEX_W / 2;
+        const baseY = 20 + stack.pos.y * HEX_H + HEX_H / 2;
+        // Подвинуть на 30% к цели на пике.
+        const maxOff = 0.3;
+        result.lunge = {
+          stackId: lunge.stackId,
+          offX: (lunge.toX - baseX) * maxOff * k,
+          offY: (lunge.toY - baseY) * maxOff * k,
+        };
+      }
+    }
+    return result;
+  }
 
   // Рендер.
   useEffect(() => {
     if (!battle || !canvasRef.current) return;
     const ctx = canvasRef.current.getContext("2d")!;
-    drawBattle(ctx, battle, hoverCell);
-  }, [battle, hoverCell]);
+    drawBattle(ctx, battle, hoverCell, computeStackVisual());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [battle, hoverCell, animTick]);
 
   // Автоскролл лога боя при появлении новых записей.
   useEffect(() => {
@@ -251,7 +481,8 @@ export function BattleScreen() {
               );
             })()}
             {castSpellId && <span style={{ color: "var(--accent)", fontSize: 12 }}>Выберите цель… (ESC — отмена)</span>}
-            <div style={{ marginLeft: "auto" }}>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+              <AnimSpeedToggle compact />
               <button onClick={() => useGame.getState().battleRunAuto()}>Автобой</button>
             </div>
           </>
@@ -341,6 +572,11 @@ function drawBattle(
   ctx: CanvasRenderingContext2D,
   battle: ReturnType<typeof useGame.getState>["battle"],
   hover: Coord | null,
+  visual: {
+    pos: Record<string, Coord>;
+    flash: Record<string, number>;
+    lunge: { stackId: string; offX: number; offY: number } | null;
+  } = { pos: {}, flash: {}, lunge: null },
 ) {
   if (!battle) return;
   const cw = ctx.canvas.width;
@@ -419,10 +655,15 @@ function drawBattle(
   for (const s of battle.stacks) {
     if (s.count <= 0) continue;
     const unit = UNITS[s.unitId];
-    const px = 20 + s.pos.x * HEX_W;
-    const py = 20 + s.pos.y * HEX_H;
-    const cx = px + HEX_W / 2;
-    const cy = py + HEX_H / 2;
+    // Визуальная позиция: интерполированная (sub-tile) или дискретная.
+    const visualCell = visual.pos[s.id] ?? s.pos;
+    let cx = 20 + visualCell.x * HEX_W + HEX_W / 2;
+    let cy = 20 + visualCell.y * HEX_H + HEX_H / 2;
+    // «Выпад» к цели — добавляется поверх позиции, только активному.
+    if (visual.lunge && visual.lunge.stackId === s.id) {
+      cx += visual.lunge.offX;
+      cy += visual.lunge.offY;
+    }
     const baseColor = s.side === "attacker" ? "#3a7a30" : "#8a3020";
     // Тень под жетоном.
     ctx.save();
@@ -471,6 +712,16 @@ function drawBattle(
     ctx.fillRect(cx - tw / 2 - 4, cy + 11, tw + 8, 13);
     ctx.fillStyle = "#fff";
     ctx.fillText(txt, cx, cy + 18);
+    // Красный flash при получении урона — поверх жетона. phase=1 в момент удара, → 0.
+    const flashPhase = visual.flash[s.id];
+    if (flashPhase) {
+      ctx.save();
+      ctx.fillStyle = `rgba(255, 64, 48, ${0.55 * flashPhase})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 }
 
