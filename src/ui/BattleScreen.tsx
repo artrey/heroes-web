@@ -24,6 +24,7 @@ import { useNet } from "../net/netStore";
 import { AnimSpeedToggle } from "./AnimSpeedToggle";
 import { cellCenter, FIELD_H, FIELD_PAD, FIELD_W, HEX_H, HEX_W } from "./battleCanvas/constants";
 import { drawBattle } from "./battleCanvas/drawBattle";
+import { useAnimationLoop } from "./hooks/useAnimationLoop";
 import { ANIM_SPEED_SCALE, useSettings } from "./settingsStore";
 
 // Длительность анимации перемещения стека на одну клетку (octile-метрика).
@@ -75,9 +76,28 @@ export function BattleScreen() {
   // Снапшот предыдущего состояния стеков, чтобы по изменению pos/count/hp/shots понять,
   // какие анимации запускать.
   const prevStacksRef = useRef<Record<string, { pos: Coord; count: number; hp: number; shots: number }>>({});
-  const animRafRef = useRef<number | null>(null);
-  // Триггер force-redraw'а канваса в кадре rAF.
-  const [animTick, setAnimTick] = useState(0);
+
+  // Общий rAF-цикл. Каждый кадр снимаем закончившиеся анимации и возвращаем
+  // true, пока остался хоть один активный элемент (move / lunge / flash).
+  const { ensureRunning: ensureAnimRaf, tick: animTick } = useAnimationLoop(() => {
+    const now = performance.now();
+    let alive = false;
+    const move = moveAnimRef.current;
+    if (move) {
+      if (now >= move.startTs + move.durationMs) moveAnimRef.current = null;
+      else alive = true;
+    }
+    const lunge = lungeAnimRef.current;
+    if (lunge) {
+      if (now >= lunge.startTs + lunge.durationMs) lungeAnimRef.current = null;
+      else alive = true;
+    }
+    for (const id of Object.keys(flashEndRef.current)) {
+      if (now >= flashEndRef.current[id]) delete flashEndRef.current[id];
+      else alive = true;
+    }
+    return alive;
+  });
 
   // Когда бой заканчивается — закрываем экран через действие store. В MP клиент
   // ничего не закрывает сам, ждёт state от хоста (иначе летят дубли-сообщений).
@@ -220,52 +240,18 @@ export function BattleScreen() {
     prevStacksRef.current = snapshot;
 
     if (scale === 0) {
-      // На «мгновенно» очистим всё активное, чтобы канвас сразу прыгнул в свежее состояние.
+      // На «мгновенно» очистим всё активное, чтобы канвас сразу прыгнул в свежее
+      // состояние. ensureAnimRaf() запустит rAF на один кадр — он сразу увидит,
+      // что alive=false, и закончится, успев инкрементнуть tick для redraw.
       moveAnimRef.current = null;
       lungeAnimRef.current = null;
       flashEndRef.current = {};
-      setAnimTick(t => t + 1);
+      ensureAnimRaf();
     } else if (move || lungeAnimRef.current || Object.keys(flashEndRef.current).length > 0) {
       ensureAnimRaf();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [battle, animSpeed]);
-
-  function ensureAnimRaf() {
-    if (animRafRef.current !== null) return;
-    const loop = () => {
-      const now = performance.now();
-      let alive = false;
-      const move = moveAnimRef.current;
-      if (move) {
-        if (now >= move.startTs + move.durationMs) moveAnimRef.current = null;
-        else alive = true;
-      }
-      const lunge = lungeAnimRef.current;
-      if (lunge) {
-        if (now >= lunge.startTs + lunge.durationMs) lungeAnimRef.current = null;
-        else alive = true;
-      }
-      for (const id of Object.keys(flashEndRef.current)) {
-        if (now >= flashEndRef.current[id]) delete flashEndRef.current[id];
-        else alive = true;
-      }
-      setAnimTick(t => t + 1);
-      if (alive) {
-        animRafRef.current = requestAnimationFrame(loop);
-      } else {
-        animRafRef.current = null;
-      }
-    };
-    animRafRef.current = requestAnimationFrame(loop);
-  }
-
-  useEffect(() => {
-    return () => {
-      if (animRafRef.current !== null) cancelAnimationFrame(animRafRef.current);
-      animRafRef.current = null;
-    };
-  }, []);
 
   function computeStackVisual(): {
     pos: Record<string, Coord>;

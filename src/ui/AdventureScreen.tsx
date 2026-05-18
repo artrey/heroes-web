@@ -21,6 +21,7 @@ import { AnimSpeedToggle } from "./AnimSpeedToggle";
 import { EDGE_PADDING_TILES, TILE_SIZE } from "./canvas/constants";
 import { drawMap } from "./canvas/drawMap";
 import { getMinimapBounds } from "./canvas/minimapLayer";
+import { useAnimationLoop } from "./hooks/useAnimationLoop";
 import { ANIM_SPEED_SCALE, useSettings } from "./settingsStore";
 
 // Прошлые позиции героев живут на уровне модуля, а не в useRef. AdventureScreen
@@ -72,9 +73,18 @@ export function AdventureScreen() {
   // Плановый путь, если игрок только что кликнул куда-то — нужен, чтобы анимация
   // шла именно по тому маршруту, который выбрал A* (с учётом объектов/danger).
   const plannedPathRef = useRef<{ heroId: string; from: Coord; path: Coord[] } | null>(null);
-  const animRafRef = useRef<number | null>(null);
-  // Триггер для force-redraw'a карты во время анимации.
-  const [animTick, setAnimTick] = useState(0);
+
+  // Общий rAF-цикл для канваса. onFrame решает, осталось ли что-то показывать
+  // (по дедлайну анимации героя). tick — счётчик кадров, форсит drawMap.
+  const { ensureRunning: ensureAnimRaf, tick: animTick } = useAnimationLoop(() => {
+    const a = heroAnimRef.current;
+    if (!a) return false;
+    if (performance.now() >= a.startTs + a.durationMs) {
+      heroAnimRef.current = null;
+      return false;
+    }
+    return true;
+  });
 
   const activePlayer = players[activePlayerId];
   // В мультиплеере «мой игрок» — это playerId, назначенный хостом. Берём:
@@ -195,33 +205,10 @@ export function AdventureScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heroes, map, animSpeed]);
 
-  // Один rAF-цикл, который дёргает animTick — useEffect ниже перерисовывает карту.
-  function ensureAnimRaf() {
-    if (animRafRef.current !== null) return;
-    const loop = () => {
-      const a = heroAnimRef.current;
-      if (!a) {
-        animRafRef.current = null;
-        return;
-      }
-      const now = performance.now();
-      if (now >= a.startTs + a.durationMs) {
-        heroAnimRef.current = null;
-        setAnimTick(t => t + 1);
-        animRafRef.current = null;
-        return;
-      }
-      setAnimTick(t => t + 1);
-      animRafRef.current = requestAnimationFrame(loop);
-    };
-    animRafRef.current = requestAnimationFrame(loop);
-  }
-
-  // Останов rAF при размонтировании компонента.
+  // Сбрасываем активную анимацию героя при размонтировании, иначе ref может
+  // указывать на «зависшего» героя при возврате с экрана боя.
   useEffect(() => {
     return () => {
-      if (animRafRef.current !== null) cancelAnimationFrame(animRafRef.current);
-      animRafRef.current = null;
       heroAnimRef.current = null;
     };
   }, []);
