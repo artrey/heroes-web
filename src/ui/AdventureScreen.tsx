@@ -522,72 +522,86 @@ export function AdventureScreen() {
       </div>
 
       <div className="side-panel">
-        <h3>🛡 ГЕРОИ ({playerHeroes.length})</h3>
-        {playerHeroes.length === 0 && <div style={{ color: "var(--text-dim)", fontSize: 12 }}>Нет героев</div>}
-        {playerHeroes.map(h => (
-          <div
-            key={h.id}
-            className={`hero-card ${h.id === selectedHeroId ? "selected" : ""}`}
-            onClick={() => selectHero(h.id)}
-            onDoubleClick={() => useGame.getState().openHero(h.id)}
-            title="Клик — выбрать, двойной клик — открыть"
-          >
-            <div className="row">
-              <span className="icon">{h.icon}</span>
-              <div style={{ flex: 1 }}>
-                <div className="name">{h.name}</div>
-                <div className="mp">
-                  ⚡ {h.movePoints} MP · ⭐ ур. {h.level}
-                </div>
-              </div>
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  useGame.getState().openHero(h.id);
-                }}
-                style={{ padding: "4px 8px", fontSize: 12 }}
-                title="Открыть"
+        <section className="side-section" style={{ flex: 2 }}>
+          <h3>🛡 ГЕРОИ ({playerHeroes.length})</h3>
+          <div className="side-section-body">
+            {playerHeroes.length === 0 && <div style={{ color: "var(--text-dim)", fontSize: 12 }}>Нет героев</div>}
+            {playerHeroes.map(h => (
+              <div
+                key={h.id}
+                className={`hero-card ${h.id === selectedHeroId ? "selected" : ""}`}
+                onClick={() => selectHero(h.id)}
+                onDoubleClick={() => useGame.getState().openHero(h.id)}
+                title="Клик — выбрать, двойной клик — открыть"
               >
-                📜
-              </button>
-            </div>
-            <HeroStatsLine hero={h} />
-            <ArmyDisplay hero={h} />
-          </div>
-        ))}
-
-        <h3 style={{ marginTop: 8 }}>🏰 ГОРОДА ({playerTowns.length})</h3>
-        {playerTowns.length === 0 && <div style={{ color: "var(--text-dim)", fontSize: 12 }}>Нет городов</div>}
-        {playerTowns.map(t => (
-          <div
-            key={t.id}
-            className={`town-card ${t.builtToday ? "built-today" : "build-ready"}`}
-            onClick={() => openTown(t.id)}
-          >
-            <div className="row">
-              <span className="icon">{FACTION_META[t.faction].icon}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: "bold" }}>{t.name}</div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Построено: {t.built.length}</div>
-              </div>
-              <span className="town-build-flag" title={t.builtToday ? "Сегодня уже строили" : "Можно построить здание"}>
-                {t.builtToday ? "🔒" : "🔨"}
-              </span>
-            </div>
-          </div>
-        ))}
-
-        <div className="log-panel" ref={logRef}>
-          {log
-            // Показываем глобальные события + личные записи моего игрока,
-            // чтобы не подсматривать ходы соперников.
-            .filter(e => !e.playerId || e.playerId === myPlayer?.id)
-            .map((l, i) => (
-              <div key={i} className="entry">
-                {l.text}
+                <div className="row">
+                  <span className="icon">{h.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div className="name">{h.name}</div>
+                    <div className="mp">
+                      ⚡ {h.movePoints} MP · ⭐ ур. {h.level}
+                    </div>
+                  </div>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      useGame.getState().openHero(h.id);
+                    }}
+                    style={{ padding: "4px 8px", fontSize: 12 }}
+                    title="Открыть"
+                  >
+                    📜
+                  </button>
+                </div>
+                <HeroStatsLine hero={h} />
+                <ArmyDisplay hero={h} />
               </div>
             ))}
-        </div>
+          </div>
+        </section>
+
+        <section className="side-section" style={{ flex: 1 }}>
+          <h3>🏰 ГОРОДА ({playerTowns.length})</h3>
+          <div className="side-section-body">
+            {playerTowns.length === 0 && <div style={{ color: "var(--text-dim)", fontSize: 12 }}>Нет городов</div>}
+            {playerTowns.map(t => (
+              <div
+                key={t.id}
+                className={`town-card ${t.builtToday ? "built-today" : "build-ready"}`}
+                onClick={() => openTown(t.id)}
+              >
+                <div className="row">
+                  <span className="icon">{FACTION_META[t.faction].icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: "bold" }}>{t.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Построено: {t.built.length}</div>
+                  </div>
+                  <span
+                    className="town-build-flag"
+                    title={t.builtToday ? "Сегодня уже строили" : "Можно построить здание"}
+                  >
+                    {t.builtToday ? "🔒" : "🔨"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="side-section" style={{ flex: 2 }}>
+          <h3>📜 ЖУРНАЛ</h3>
+          <div className="log-panel" ref={logRef}>
+            {log
+              // Показываем глобальные события + личные записи моего игрока,
+              // чтобы не подсматривать ходы соперников.
+              .filter(e => !e.playerId || e.playerId === myPlayer?.id)
+              .map((l, i) => (
+                <div key={i} className="entry">
+                  {l.text}
+                </div>
+              ))}
+          </div>
+        </section>
 
         <button className="end-turn-btn" onClick={() => endTurn()} disabled={!isMyTurn}>
           Завершить ход (↵)
