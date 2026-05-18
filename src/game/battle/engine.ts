@@ -418,15 +418,15 @@ export function doAttack(b: BattleState, attackerId: string, defenderId: string,
       `${aDef.name} (${a.count}) бьёт ${UNITS[d.unitId].name}: ${res.dmg} урона, убито ${res.killed}`,
     ),
   );
-  // Контратака.
-  if (d.count > 0 && !d.hasRetaliated && !UNITS[d.unitId].ranged) {
+  // Контратака. По умолчанию — одна за раунд (hasRetaliated сбрасывается в начале
+  // нового раунда в advanceCursor). У юнитов с unlimitedRetaliation (грифон) лимита нет.
+  const dDef = UNITS[d.unitId];
+  if (d.count > 0 && !dDef.ranged && (dDef.unlimitedRetaliation || !d.hasRetaliated)) {
     const ret = rollDamage(newB, d, a, false);
     a.count = ret.newCount;
     a.hp = ret.remainingHp;
     d.hasRetaliated = true;
-    newB.log.push(
-      battleLine(newB.round, `${UNITS[d.unitId].name} (${d.count}) отвечает: ${ret.dmg} урона, убито ${ret.killed}`),
-    );
+    newB.log.push(battleLine(newB.round, `${dDef.name} (${d.count}) отвечает: ${ret.dmg} урона, убито ${ret.killed}`));
   }
   return finalizeTurn(newB, a.id);
 }

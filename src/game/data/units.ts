@@ -61,6 +61,7 @@ export const UNITS: Record<string, UnitDef> = {
     initiative: 7,
     ranged: false,
     flying: true,
+    unlimitedRetaliation: true,
     cost: { gold: 200 },
     growth: 7,
     icon: "🦅",

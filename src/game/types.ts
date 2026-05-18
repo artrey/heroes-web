@@ -43,6 +43,9 @@ export interface UnitDef {
   shots?: number;
   ranged: boolean;
   flying: boolean;
+  // Если true — стек контратакует на каждую входящую атаку, игнорируя лимит
+  // «одна контратака за раунд». Пример: грифон.
+  unlimitedRetaliation?: boolean;
   cost: Partial<ResourceBag>;
   growth: number;
   icon: string; // эмодзи / placeholder
