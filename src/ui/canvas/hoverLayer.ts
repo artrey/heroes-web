@@ -12,7 +12,7 @@ export function drawHoverLayer(
   danger: { cells: Set<string>; sources: Set<string> },
 ): void {
   if (!hoverTile) return;
-  const { ctx, camera } = rc;
+  const { ctx, camera, revealed } = rc;
   // Сам hover-rect.
   const sx = hoverTile.x * TILE_SIZE - camera.x;
   const sy = hoverTile.y * TILE_SIZE - camera.y;
@@ -21,12 +21,15 @@ export function drawHoverLayer(
   ctx.strokeRect(sx + 1, sy + 1, TILE_SIZE - 2, TILE_SIZE - 2);
   ctx.lineWidth = 1;
 
-  // Danger / source подсветка.
+  // Danger / source подсветка. На неоткрытых клетках ZoC не показываем —
+  // иначе hover в тумане выдавал бы позиции монстров и чужих героев.
   const hKey = `${hoverTile.x},${hoverTile.y}`;
+  if (revealed[hKey] !== true) return;
   const guards: Coord[] = [];
   const guardedCells: Coord[] = [];
   if (danger.cells.has(hKey)) {
     for (const srcKey of danger.sources) {
+      if (revealed[srcKey] !== true) continue;
       const [gx, gy] = srcKey.split(",").map(Number);
       if (Math.max(Math.abs(gx - hoverTile.x), Math.abs(gy - hoverTile.y)) === 1) {
         guards.push({ x: gx, y: gy });
@@ -34,6 +37,7 @@ export function drawHoverLayer(
     }
   } else if (danger.sources.has(hKey)) {
     for (const cellKey of danger.cells) {
+      if (revealed[cellKey] !== true) continue;
       const [cx, cy] = cellKey.split(",").map(Number);
       if (Math.max(Math.abs(cx - hoverTile.x), Math.abs(cy - hoverTile.y)) === 1) {
         guardedCells.push({ x: cx, y: cy });
