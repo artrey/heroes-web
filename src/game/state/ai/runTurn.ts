@@ -7,7 +7,15 @@ import { canAfford } from "../../utils/resources";
 import { revealForPlayer } from "../../utils/visibility";
 import type { GameStore } from "../actions";
 import { aiBattleBonus, pickAiTarget, waitForAiMoveAnim } from "../helpers/ai";
+import { HERO_HIRE_COST } from "../initial";
 import { runAiBattle } from "../slices/battle";
+
+// Сколько героев максимум держим у одного ИИ-игрока. Больше — лишняя экономия
+// золота, мало что добавляет тактически. Лимит, не цель.
+const AI_MAX_HEROES = 3;
+// Сколько золота держим в резерве после найма героя, если у игрока уже есть
+// хотя бы один герой — иначе экономика просядет под армию.
+const AI_GOLD_RESERVE_AFTER_HIRE = 2000;
 
 // Store-API, через который ИИ читает/пишет состояние и вызывает action'ы.
 // Передаётся параметром, чтобы избежать циклического импорта useGame.
@@ -36,12 +44,13 @@ export async function runAiTurn(api: RunAiApi): Promise<void> {
       .filter(b => !town.built.includes(b.id))
       .filter(b => !b.prereq || b.prereq.every(p => town.built.includes(p)))
       .filter(b => canAfford(api.getState().players[pid].resources, b.cost));
-    // Приоритет: жилища, потом ратуши, форт.
+    // Приоритет: форт → таверна (для найма героев) → жилища → ратуши → прочее.
     const order: typeof candidates = [
       ...candidates.filter(b => b.id === "fort"),
+      ...candidates.filter(b => b.id === "tavern"),
       ...candidates.filter(b => b.produces),
       ...candidates.filter(b => b.givesGoldPerDay),
-      ...candidates.filter(b => !b.produces && !b.givesGoldPerDay),
+      ...candidates.filter(b => b.id !== "fort" && b.id !== "tavern" && !b.produces && !b.givesGoldPerDay),
     ];
     if (order[0]) api.getState().buildBuilding(tid, order[0].id);
   }
@@ -63,7 +72,21 @@ export async function runAiTurn(api: RunAiApi): Promise<void> {
       }
     }
   }
-  // 3) Движение героев.
+  // 2.5) Найм героев в таверне. Без героя ИИ просто стоит — берём первого
+  // обязательно, остальных только если есть запас золота помимо стоимости.
+  for (const tid of player.townIds) {
+    const town = api.getState().towns[tid];
+    if (!town || !town.built.includes("tavern")) continue;
+    const p = api.getState().players[pid];
+    if (p.heroIds.length >= AI_MAX_HEROES) break;
+    if (!canAfford(p.resources, HERO_HIRE_COST)) break;
+    const goldAfter = (p.resources.gold ?? 0) - (HERO_HIRE_COST.gold ?? 0);
+    const reserve = p.heroIds.length === 0 ? 0 : AI_GOLD_RESERVE_AFTER_HIRE;
+    if (goldAfter < reserve) break;
+    api.getState().hireHero(tid);
+  }
+  // 3) Движение героев. heroIds читаем после найма, чтобы новый герой тоже
+  // походил в этот же ход — у него полный запас MP.
   const heroIds = api.getState().players[pid].heroIds.slice();
   for (const hid of heroIds) {
     if (api.getState().battle) return; // если ИИ ввязался в бой — выходим.
