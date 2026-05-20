@@ -539,7 +539,7 @@ export function AdventureScreen() {
                   <div style={{ flex: 1 }}>
                     <div className="name">{h.name}</div>
                     <div className="mp">
-                      ⚡ {h.movePoints} MP · ⭐ ур. {h.level}
+                      ⚡ {h.movePoints} ОД · ⭐ ур. {h.level}
                     </div>
                   </div>
                   <button
@@ -659,7 +659,7 @@ function PathCostBadge({ total, mp }: { total: number; mp: number }) {
   const enough = total <= mp;
   return (
     <div className="path-cost-badge" style={{ color: enough ? "var(--gold)" : "var(--danger)" }}>
-      Путь: {total} MP <span style={{ color: "var(--text-dim)" }}>(доступно {mp})</span>
+      Путь: {total} ОД <span style={{ color: "var(--text-dim)" }}>(доступно {mp})</span>
     </div>
   );
 }
@@ -689,7 +689,7 @@ function MapTooltip({
   const lines: { title: string; sub?: string }[] = [];
   if (hero) {
     const ow = players[hero.ownerId];
-    lines.push({ title: `${hero.icon} ${hero.name}`, sub: `${ow?.name ?? "—"} · ${hero.faction}` });
+    lines.push({ title: `${hero.icon} ${hero.name}`, sub: `${ow?.name ?? "—"} · ${FACTION_META[hero.faction].name}` });
     const totalUnits = hero.army.reduce((acc, s) => acc + s.count, 0);
     lines.push({ title: "Армия", sub: `${totalUnits} существ` });
   } else if (obj) {

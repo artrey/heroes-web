@@ -279,7 +279,7 @@ function HeroPanel({
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 20, color: "var(--gold)" }}>{hero.name}</div>
           <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-            Уровень {hero.level} · {FACTION_META[hero.faction].name} · ⚡ {hero.movePoints} MP
+            Уровень {hero.level} · {FACTION_META[hero.faction].name} · ⚡ {hero.movePoints} ОД
           </div>
         </div>
       </div>

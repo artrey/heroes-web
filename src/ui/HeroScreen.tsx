@@ -138,7 +138,7 @@ export function HeroScreen() {
             <div className="stat-row">
               <span>⚡ Очки движения</span>
               <span>
-                {hero.movePoints} / {effMaxMP} MP
+                {hero.movePoints} / {effMaxMP} ОД
               </span>
             </div>
             <div className="stat-row">
@@ -237,7 +237,7 @@ export function HeroScreen() {
                       {gear.defense ? <BonusRow label="🛡️ Защита" value={`+${gear.defense}`} /> : null}
                       {gear.speed ? <BonusRow label="🏃 Скорость" value={`+${gear.speed}`} /> : null}
                       {gear.hpBonus ? <BonusRow label="❤️ HP" value={`+${gear.hpBonus}`} /> : null}
-                      {gear.movement ? <BonusRow label="🥾 Доп. MP" value={`+${gear.movement}`} /> : null}
+                      {gear.movement ? <BonusRow label="🥾 Доп. ОД" value={`+${gear.movement}`} /> : null}
                       {gear.spellPower ? <BonusRow label="🔮 Сила магии" value={`+${gear.spellPower}`} /> : null}
                       {gear.knowledge ? <BonusRow label="📚 Знания" value={`+${gear.knowledge}`} /> : null}
                       {gear.manaMult ? <BonusRow label="💧 Макс. мана" value={`+${gear.manaMult}%`} /> : null}
