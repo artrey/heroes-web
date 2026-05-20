@@ -700,7 +700,12 @@ function MapTooltip({
     } else if (obj.kind === "dwelling") {
       const tw = towns[obj.id];
       const ow = tw?.ownerId ? players[tw.ownerId] : null;
-      lines.push({ title: `${obj.icon} ${tw?.name ?? "Город"}`, sub: ow ? `Владелец: ${ow.name}` : "Нейтральный" });
+      const ownerLabel = ow ? ow.name : "Нейтральный";
+      const factionLabel = tw ? FACTION_META[tw.faction].name : null;
+      lines.push({
+        title: `${obj.icon} ${tw?.name ?? "Город"}`,
+        sub: factionLabel ? `${ownerLabel} · ${factionLabel}` : ownerLabel,
+      });
     } else if (obj.kind === "resource") {
       lines.push({ title: `${RESOURCE_ICONS[obj.resource]} ${RESOURCE_NAMES[obj.resource]}`, sub: `+${obj.amount}` });
     } else if (obj.kind === "mine") {
