@@ -23,6 +23,7 @@ import { drawMap } from "./canvas/drawMap";
 import { getMinimapBounds } from "./canvas/minimapLayer";
 import { useAnimationLoop } from "./hooks/useAnimationLoop";
 import { useCamera } from "./hooks/useCamera";
+import { PlayersInfoModal } from "./PlayersInfoModal";
 import { ANIM_SPEED_SCALE, useSettings } from "./settingsStore";
 
 // Прошлые позиции героев живут на уровне модуля, а не в useRef. AdventureScreen
@@ -40,6 +41,7 @@ export function AdventureScreen() {
   const heroes = useGame(s => s.heroes);
   const towns = useGame(s => s.towns);
   const players = useGame(s => s.players);
+  const playerOrder = useGame(s => s.playerOrder);
   const activePlayerId = useGame(s => s.activePlayerId);
   const selectedHeroId = useGame(s => s.selectedHeroId);
   const day = useGame(s => s.day);
@@ -57,6 +59,7 @@ export function AdventureScreen() {
 
   const [hoverPath, setHoverPath] = useState<Coord[] | null>(null);
   const [hoverTile, setHoverTile] = useState<Coord | null>(null);
+  const [showPlayersInfo, setShowPlayersInfo] = useState(false);
   // Камера, drag-pan, скролл, стрелочки, clamp по краям + центрирование на клетке.
   const { camera, setCamera, clampCamera, centerCameraOnTile, panMouseDown, panMouseMove, panMouseUp } = useCamera({
     canvasRef,
@@ -488,8 +491,25 @@ export function AdventureScreen() {
           })}
         </div>
         <AnimSpeedToggle compact />
+        <button onClick={() => setShowPlayersInfo(true)} title="Карта и игроки">
+          🗺 О карте
+        </button>
         <button onClick={() => useGame.getState().goToMenu()}>Меню</button>
       </div>
+
+      {showPlayersInfo && (
+        <PlayersInfoModal
+          map={map}
+          players={players}
+          playerOrder={playerOrder}
+          activePlayerId={activePlayerId}
+          myPlayerId={myPlayer?.id ?? null}
+          day={day}
+          week={week}
+          month={month}
+          onClose={() => setShowPlayersInfo(false)}
+        />
+      )}
 
       <div className="map-area" ref={containerRef}>
         <canvas
