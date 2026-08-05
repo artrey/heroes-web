@@ -8,6 +8,7 @@ import { useNet } from "../net/netStore";
 import { NetClient, NetHost } from "../net/peer";
 import type { LobbyPlayer, NetMessage } from "../net/peer";
 import { broadcastState } from "../net/sync";
+import { FactionIcon, UiIcon } from "./gameArt";
 
 type Mode = "choose" | "host" | "join";
 
@@ -29,7 +30,9 @@ export function MultiplayerScreen() {
     return (
       <div className="multiplayer-screen">
         <div className="mp-card">
-          <h1 style={{ color: "var(--gold)", marginTop: 0 }}>🌐 Мультиплеер (P2P)</h1>
+          <h1 style={{ color: "var(--gold)", marginTop: 0 }}>
+            <UiIcon name="multiplayer" size={34} /> Мультиплеер (P2P)
+          </h1>
           <p style={{ color: "var(--text-dim)" }}>
             Прямое подключение между браузерами через PeerJS — никакого сервера не нужно. Один создаёт комнату,
             остальные подключаются по короткому коду.
@@ -186,7 +189,9 @@ function HostView({ startGame, onBack }: { startGame: (opts: NewGameOptions) => 
   return (
     <div className="multiplayer-screen">
       <div className="mp-card">
-        <h2 style={{ color: "var(--gold)", marginTop: 0 }}>🛡 Хост — комната</h2>
+        <h2 style={{ color: "var(--gold)", marginTop: 0 }}>
+          <UiIcon name="defense" size={28} /> Хост — комната
+        </h2>
         <div style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 8 }}>
           Поделитесь кодом с друзьями. Они вставят его в окне «Присоединиться».
         </div>
@@ -199,7 +204,7 @@ function HostView({ startGame, onBack }: { startGame: (opts: NewGameOptions) => 
                 void navigator.clipboard.writeText(net.roomCode!);
               }}
             >
-              📋
+              <UiIcon name="clipboard" size={18} />
             </button>
           )}
         </div>
@@ -208,11 +213,10 @@ function HostView({ startGame, onBack }: { startGame: (opts: NewGameOptions) => 
         <ul className="mp-lobby">
           {net.lobby.map(p => (
             <li key={p.peerId}>
-              {p.isHost ? "👑 " : "👤 "}
-              {p.name}
+              <UiIcon name={p.isHost ? "crown" : "player"} size={18} /> {p.name}
               {p.isHost && <span style={{ color: "var(--text-dim)" }}> (вы)</span>}{" "}
               <span style={{ color: "var(--text-dim)" }}>
-                · {FACTION_META[p.faction as Faction]?.icon ?? "❓"}{" "}
+                · <FactionIcon faction={p.faction as Faction} size={18} />{" "}
                 {FACTION_META[p.faction as Faction]?.name ?? p.faction}
               </span>
             </li>
@@ -235,7 +239,7 @@ function HostView({ startGame, onBack }: { startGame: (opts: NewGameOptions) => 
             <select value={faction} onChange={e => setHostFaction(e.target.value as Faction)} style={{ width: "100%" }}>
               {FACTION_LIST.map(f => (
                 <option key={f} value={f}>
-                  {FACTION_META[f].icon} {FACTION_META[f].name}
+                  {FACTION_META[f].name}
                 </option>
               ))}
             </select>
@@ -307,7 +311,9 @@ function JoinView({ onBack }: { onBack: () => void }) {
   return (
     <div className="multiplayer-screen">
       <div className="mp-card">
-        <h2 style={{ color: "var(--gold)", marginTop: 0 }}>🚪 Присоединиться</h2>
+        <h2 style={{ color: "var(--gold)", marginTop: 0 }}>
+          <UiIcon name="door" size={28} /> Присоединиться
+        </h2>
         {net.status === "idle" && (
           <>
             <div style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 8 }}>Введите код комнаты от хоста.</div>
@@ -332,11 +338,10 @@ function JoinView({ onBack }: { onBack: () => void }) {
             <ul className="mp-lobby">
               {net.lobby.map(p => (
                 <li key={p.peerId}>
-                  {p.isHost ? "👑 " : "👤 "}
-                  {p.name}
+                  <UiIcon name={p.isHost ? "crown" : "player"} size={18} /> {p.name}
                   {p.peerId === net.myPeerId && <span style={{ color: "var(--text-dim)" }}> (вы)</span>}{" "}
                   <span style={{ color: "var(--text-dim)" }}>
-                    · {FACTION_META[p.faction as Faction]?.icon ?? "❓"}{" "}
+                    · <FactionIcon faction={p.faction as Faction} size={18} />{" "}
                     {FACTION_META[p.faction as Faction]?.name ?? p.faction}
                   </span>
                 </li>
@@ -347,7 +352,7 @@ function JoinView({ onBack }: { onBack: () => void }) {
               <select value={faction} onChange={e => sendFaction(e.target.value as Faction)} style={{ width: "100%" }}>
                 {FACTION_LIST.map(f => (
                   <option key={f} value={f}>
-                    {FACTION_META[f].icon} {FACTION_META[f].name}
+                    {FACTION_META[f].name}
                   </option>
                 ))}
               </select>

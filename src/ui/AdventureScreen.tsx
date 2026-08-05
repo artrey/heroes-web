@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { ARTIFACTS as ARTIFACTS_LOCAL } from "../game/data/artifacts";
 import { FACTION_META } from "../game/data/factions";
@@ -13,7 +14,7 @@ import {
 } from "../game/utils/heroBonus";
 import { dailyIncomeFor } from "../game/utils/income";
 import { findPath, pathCost } from "../game/utils/pathfind";
-import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
+import { RESOURCE_NAMES } from "../game/utils/resources";
 import { computeVisibleTiles } from "../game/utils/visibility";
 import { computeDanger } from "../game/utils/zoc";
 import { useNet } from "../net/netStore";
@@ -21,6 +22,7 @@ import { AnimSpeedToggle } from "./AnimSpeedToggle";
 import { EDGE_PADDING_TILES, TILE_SIZE } from "./canvas/constants";
 import { drawMap } from "./canvas/drawMap";
 import { getMinimapBounds } from "./canvas/minimapLayer";
+import { ArtifactIcon, FactionIcon, ResourceIcon, subscribeToSpriteLoads, UiIcon, UnitIcon } from "./gameArt";
 import { useAnimationLoop } from "./hooks/useAnimationLoop";
 import { useCamera } from "./hooks/useCamera";
 import { PlayersInfoModal } from "./PlayersInfoModal";
@@ -60,6 +62,9 @@ export function AdventureScreen() {
   const [hoverPath, setHoverPath] = useState<Coord[] | null>(null);
   const [hoverTile, setHoverTile] = useState<Coord | null>(null);
   const [showPlayersInfo, setShowPlayersInfo] = useState(false);
+  const [spriteRevision, setSpriteRevision] = useState(0);
+
+  useEffect(() => subscribeToSpriteLoads(() => setSpriteRevision(revision => revision + 1)), []);
   // Камера, drag-pan, скролл, стрелочки, clamp по краям + центрирование на клетке.
   const { camera, setCamera, clampCamera, centerCameraOnTile, panMouseDown, panMouseMove, panMouseUp } = useCamera({
     canvasRef,
@@ -260,7 +265,21 @@ export function AdventureScreen() {
       heroVisualPos: computeHeroVisualPos(),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, heroes, towns, players, camera, hoverPath, hoverTile, selectedHeroId, revealed, visible, danger, animTick]);
+  }, [
+    map,
+    heroes,
+    towns,
+    players,
+    camera,
+    hoverPath,
+    hoverTile,
+    selectedHeroId,
+    revealed,
+    visible,
+    danger,
+    animTick,
+    spriteRevision,
+  ]);
 
   // Автоскролл лога вниз при появлении новых записей.
   useEffect(() => {
@@ -470,7 +489,7 @@ export function AdventureScreen() {
     <div className="adventure">
       <div className="top-bar">
         <span className="day">
-          📅 Месяц {month}, Неделя {((week - 1) % 4) + 1}, День {((day - 1) % 7) + 1}
+          <UiIcon name="calendar" size={20} /> Месяц {month}, Неделя {((week - 1) % 4) + 1}, День {((day - 1) % 7) + 1}
         </span>
         <span style={{ color: activePlayer?.color }}>● {activePlayer?.name}</span>
         {activePlayer && !isMyTurn && (
@@ -483,7 +502,7 @@ export function AdventureScreen() {
             const inc = income?.[k] ?? 0;
             return (
               <div className="res-item" key={k} title={`${RESOURCE_NAMES[k]}${inc ? ` · +${inc}/день` : ""}`}>
-                <span>{RESOURCE_ICONS[k]}</span>
+                <ResourceIcon resource={k} size={20} />
                 <span>{myPlayer!.resources[k]}</span>
                 {inc > 0 && <span style={{ color: "var(--good)", fontSize: 11, marginLeft: 2 }}>(+{inc})</span>}
               </div>
@@ -492,7 +511,7 @@ export function AdventureScreen() {
         </div>
         <AnimSpeedToggle compact />
         <button onClick={() => setShowPlayersInfo(true)} title="Карта и игроки">
-          🗺 О карте
+          <UiIcon name="map" size={18} /> О карте
         </button>
         <button onClick={() => useGame.getState().goToMenu()}>Меню</button>
       </div>
@@ -543,7 +562,9 @@ export function AdventureScreen() {
 
       <div className="side-panel">
         <section className="side-section" style={{ flex: 2 }}>
-          <h3>🛡 ГЕРОИ ({playerHeroes.length})</h3>
+          <h3>
+            <UiIcon name="defense" size={20} /> ГЕРОИ ({playerHeroes.length})
+          </h3>
           <div className="side-section-body">
             {playerHeroes.length === 0 && <div style={{ color: "var(--text-dim)", fontSize: 12 }}>Нет героев</div>}
             {playerHeroes.map(h => (
@@ -555,11 +576,12 @@ export function AdventureScreen() {
                 title="Клик — выбрать, двойной клик — открыть"
               >
                 <div className="row">
-                  <span className="icon">{h.icon}</span>
+                  <FactionIcon faction={h.faction} size={44} className="icon" />
                   <div style={{ flex: 1 }}>
                     <div className="name">{h.name}</div>
                     <div className="mp">
-                      ⚡ {h.movePoints} ОД · ⭐ ур. {h.level}
+                      <UiIcon name="movement" size={14} /> {h.movePoints} ОД · <UiIcon name="victory" size={14} /> ур.{" "}
+                      {h.level}
                     </div>
                   </div>
                   <button
@@ -570,7 +592,7 @@ export function AdventureScreen() {
                     style={{ padding: "4px 8px", fontSize: 12 }}
                     title="Открыть"
                   >
-                    📜
+                    <UiIcon name="scroll" size={18} />
                   </button>
                 </div>
                 <HeroStatsLine hero={h} />
@@ -581,7 +603,9 @@ export function AdventureScreen() {
         </section>
 
         <section className="side-section" style={{ flex: 1 }}>
-          <h3>🏰 ГОРОДА ({playerTowns.length})</h3>
+          <h3>
+            <UiIcon name="town" size={20} /> ГОРОДА ({playerTowns.length})
+          </h3>
           <div className="side-section-body">
             {playerTowns.length === 0 && <div style={{ color: "var(--text-dim)", fontSize: 12 }}>Нет городов</div>}
             {playerTowns.map(t => (
@@ -591,7 +615,7 @@ export function AdventureScreen() {
                 onClick={() => openTown(t.id)}
               >
                 <div className="row">
-                  <span className="icon">{FACTION_META[t.faction].icon}</span>
+                  <FactionIcon faction={t.faction} size={42} className="icon" />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: "bold" }}>{t.name}</div>
                     <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Построено: {t.built.length}</div>
@@ -600,7 +624,7 @@ export function AdventureScreen() {
                     className="town-build-flag"
                     title={t.builtToday ? "Сегодня уже строили" : "Можно построить здание"}
                   >
-                    {t.builtToday ? "🔒" : "🔨"}
+                    <UiIcon name={t.builtToday ? "lock" : "build"} size={20} />
                   </span>
                 </div>
               </div>
@@ -609,7 +633,9 @@ export function AdventureScreen() {
         </section>
 
         <section className="side-section" style={{ flex: 2 }}>
-          <h3>📜 ЖУРНАЛ</h3>
+          <h3>
+            <UiIcon name="scroll" size={20} /> ЖУРНАЛ
+          </h3>
           <div className="log-panel" ref={logRef}>
             {log
               // Показываем глобальные события + личные записи моего игрока,
@@ -641,12 +667,20 @@ function HeroStatsLine({ hero }: { hero: Hero }) {
       style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap" }}
       title="Атака / Защита / Сила магии / Знания · Мана (с учётом артефактов)"
     >
-      <span>⚔️ {bonus.attack}</span>
-      <span>🛡️ {bonus.defense}</span>
-      <span>🔮 {sp}</span>
-      <span>📚 {know}</span>
       <span>
-        💧 {hero.mana}/{maxMana}
+        <UiIcon name="attack" size={15} /> {bonus.attack}
+      </span>
+      <span>
+        <UiIcon name="defense" size={15} /> {bonus.defense}
+      </span>
+      <span>
+        <UiIcon name="spellPower" size={15} /> {sp}
+      </span>
+      <span>
+        <UiIcon name="knowledge" size={15} /> {know}
+      </span>
+      <span>
+        <UiIcon name="mana" size={15} /> {hero.mana}/{maxMana}
       </span>
     </div>
   );
@@ -666,7 +700,7 @@ function ArmyDisplay({ hero }: { hero: Hero }) {
         const unit = UNITS_LOCAL[stack.unitId];
         return (
           <div key={idx} className="army-slot" title={unit?.name ?? stack.unitId}>
-            <span className="icon">{unit?.icon ?? "?"}</span>
+            {unit ? <UnitIcon id={unit.id} size={34} className="icon" /> : null}
             <span>{stack.count}</span>
           </div>
         );
@@ -706,16 +740,20 @@ function MapTooltip({
   const t = map.tiles[tile.y * map.width + tile.x];
   const obj = t.objectId ? map.objects[t.objectId] : null;
 
-  const lines: { title: string; sub?: string }[] = [];
+  const lines: { icon?: ReactNode; title: string; sub?: string }[] = [];
   if (hero) {
     const ow = players[hero.ownerId];
-    lines.push({ title: `${hero.icon} ${hero.name}`, sub: `${ow?.name ?? "—"} · ${FACTION_META[hero.faction].name}` });
+    lines.push({
+      icon: <FactionIcon faction={hero.faction} size={26} />,
+      title: hero.name,
+      sub: `${ow?.name ?? "—"} · ${FACTION_META[hero.faction].name}`,
+    });
     const totalUnits = hero.army.reduce((acc, s) => acc + s.count, 0);
     lines.push({ title: "Армия", sub: `${totalUnits} существ` });
   } else if (obj) {
     if (obj.kind === "monster") {
       const u = UNITS_LOCAL[obj.unitId];
-      lines.push({ title: `${u.icon} ${u.name}`, sub: countLabel(obj.unitCount) });
+      lines.push({ icon: <UnitIcon id={u.id} size={26} />, title: u.name, sub: countLabel(obj.unitCount) });
       lines.push({ title: "Бой!", sub: `Атк ${u.attack} / Защ ${u.defense} / HP ${u.hp}` });
     } else if (obj.kind === "dwelling") {
       const tw = towns[obj.id];
@@ -723,26 +761,32 @@ function MapTooltip({
       const ownerLabel = ow ? ow.name : "Нейтральный";
       const factionLabel = tw ? FACTION_META[tw.faction].name : null;
       lines.push({
-        title: `${obj.icon} ${tw?.name ?? "Город"}`,
+        icon: tw ? <FactionIcon faction={tw.faction} size={26} /> : <UiIcon name="town" size={26} />,
+        title: tw?.name ?? "Город",
         sub: factionLabel ? `${ownerLabel} · ${factionLabel}` : ownerLabel,
       });
     } else if (obj.kind === "resource") {
-      lines.push({ title: `${RESOURCE_ICONS[obj.resource]} ${RESOURCE_NAMES[obj.resource]}`, sub: `+${obj.amount}` });
+      lines.push({
+        icon: <ResourceIcon resource={obj.resource} size={26} />,
+        title: RESOURCE_NAMES[obj.resource],
+        sub: `+${obj.amount}`,
+      });
     } else if (obj.kind === "mine") {
       const ow = obj.ownerId ? players[obj.ownerId] : null;
       lines.push({
-        title: `${obj.icon} Шахта (${RESOURCE_NAMES[obj.mineResource]})`,
+        icon: <ResourceIcon resource={obj.mineResource} size={26} />,
+        title: `Шахта (${RESOURCE_NAMES[obj.mineResource]})`,
         sub: ow ? `Владелец: ${ow.name}` : "Нейтральная",
       });
     } else if (obj.kind === "artifact") {
       const a = ARTIFACTS_LOCAL[obj.artifactId];
-      lines.push({ title: `${a.icon} ${a.name}`, sub: a.description });
+      lines.push({ icon: <ArtifactIcon id={a.id} size={26} />, title: a.name, sub: a.description });
     } else if (obj.kind === "chest") {
-      lines.push({ title: "🎁 Сундук", sub: "Неизвестное содержимое" });
+      lines.push({ icon: <UiIcon name="treasure" size={26} />, title: "Сундук", sub: "Неизвестное содержимое" });
     } else if (obj.kind === "tree") {
-      lines.push({ title: "🌲 Лес", sub: "Непроходимо" });
+      lines.push({ icon: <UiIcon name="forest" size={26} />, title: "Лес", sub: "Непроходимо" });
     } else if (obj.kind === "mountain") {
-      lines.push({ title: "⛰️ Горы", sub: "Непроходимо" });
+      lines.push({ icon: <UiIcon name="mountain" size={26} />, title: "Горы", sub: "Непроходимо" });
     }
   } else {
     lines.push({ title: `Поле (${t.terrain})` });
@@ -756,7 +800,11 @@ function MapTooltip({
     <div className="map-tooltip" style={{ left, top }}>
       {lines.map((l, i) => (
         <div key={i}>
-          <div className="tt-title">{l.title}</div>
+          <div className="tt-title">
+            {l.icon}
+            {l.icon ? " " : null}
+            {l.title}
+          </div>
           {l.sub && <div className="tt-sub">{l.sub}</div>}
         </div>
       ))}

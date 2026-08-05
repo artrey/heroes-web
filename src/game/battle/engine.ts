@@ -581,48 +581,33 @@ export function doCastSpell(
     target.count = res.newCount;
     target.hp = res.remainingHp;
     newB.log.push(
-      battleLine(
-        newB.round,
-        `${sp.icon} ${sp.name}: ${res.dmg} урона по ${UNITS[target.unitId].name}, убито ${res.killed}`,
-      ),
+      battleLine(newB.round, `${sp.name}: ${res.dmg} урона по ${UNITS[target.unitId].name}, убито ${res.killed}`),
     );
   } else if (sp.effect === "buffAttack") {
     target.tempBonus.attack += sp.basePower;
-    newB.log.push(
-      battleLine(newB.round, `${sp.icon} ${sp.name}: +${sp.basePower} к атаке (${UNITS[target.unitId].name})`),
-    );
+    newB.log.push(battleLine(newB.round, `${sp.name}: +${sp.basePower} к атаке (${UNITS[target.unitId].name})`));
   } else if (sp.effect === "buffDefense") {
     target.tempBonus.defense += sp.basePower;
-    newB.log.push(
-      battleLine(newB.round, `${sp.icon} ${sp.name}: +${sp.basePower} к защите (${UNITS[target.unitId].name})`),
-    );
+    newB.log.push(battleLine(newB.round, `${sp.name}: +${sp.basePower} к защите (${UNITS[target.unitId].name})`));
   } else if (sp.effect === "buffSpeed") {
     target.tempBonus.speed += sp.basePower;
-    newB.log.push(
-      battleLine(newB.round, `${sp.icon} ${sp.name}: +${sp.basePower} к скорости (${UNITS[target.unitId].name})`),
-    );
+    newB.log.push(battleLine(newB.round, `${sp.name}: +${sp.basePower} к скорости (${UNITS[target.unitId].name})`));
   } else if (sp.effect === "debuffAttack") {
     target.tempBonus.attack -= sp.basePower;
-    newB.log.push(
-      battleLine(newB.round, `${sp.icon} ${sp.name}: −${sp.basePower} к атаке (${UNITS[target.unitId].name})`),
-    );
+    newB.log.push(battleLine(newB.round, `${sp.name}: −${sp.basePower} к атаке (${UNITS[target.unitId].name})`));
   } else if (sp.effect === "debuffDefense") {
     target.tempBonus.defense -= sp.basePower;
-    newB.log.push(
-      battleLine(newB.round, `${sp.icon} ${sp.name}: −${sp.basePower} к защите (${UNITS[target.unitId].name})`),
-    );
+    newB.log.push(battleLine(newB.round, `${sp.name}: −${sp.basePower} к защите (${UNITS[target.unitId].name})`));
   } else if (sp.effect === "debuffSpeed") {
     target.tempBonus.speed -= sp.basePower;
-    newB.log.push(
-      battleLine(newB.round, `${sp.icon} ${sp.name}: −${sp.basePower} к скорости (${UNITS[target.unitId].name})`),
-    );
+    newB.log.push(battleLine(newB.round, `${sp.name}: −${sp.basePower} к скорости (${UNITS[target.unitId].name})`));
   } else if (sp.effect === "heal") {
     // Лечит только верхний юнит (без воскрешения убитых).
     const maxUnitHp = effectiveStats(target, bonusFor(newB, target.side)).hp;
     const amount = sp.basePower + sp.perPower * magic.spellPower;
     const restored = Math.max(0, Math.min(amount, maxUnitHp - target.hp));
     target.hp += restored;
-    newB.log.push(battleLine(newB.round, `${sp.icon} ${sp.name}: +${restored} HP (${UNITS[target.unitId].name})`));
+    newB.log.push(battleLine(newB.round, `${sp.name}: +${restored} HP (${UNITS[target.unitId].name})`));
   }
 
   // Эффекты на скорость могут влиять на дальнейший порядок ходов — пересчитаем

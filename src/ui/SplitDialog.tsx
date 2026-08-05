@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { UNITS } from "../game/data/units";
+import { UiIcon, UnitIcon } from "./gameArt";
 
 // Универсальный диалог разделения отряда: показывает источник и цель, слайдер
 // числа существ и кнопки min / -1 / +1 / max. Сторона target может быть пустой —
@@ -53,10 +54,10 @@ export function SplitDialog({
       <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 380 }}>
         <h2 style={{ marginTop: 0, color: "var(--gold)" }}>Разделить отряд</h2>
         <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
-          <SplitSide icon={fromUnit?.icon ?? "?"} name={fromUnit?.name ?? "?"} count={remaining} />
-          <div style={{ fontSize: 22, color: "var(--text-dim)" }}>⇄</div>
+          <SplitSide unitId={fromUnit?.id ?? null} name={fromUnit?.name ?? "?"} count={remaining} />
+          <UiIcon name="transfer" size={30} />
           <SplitSide
-            icon={toUnit?.icon ?? fromUnit?.icon ?? "?"}
+            unitId={toUnit?.id ?? fromUnit?.id ?? null}
             name={toUnit?.name ?? fromUnit?.name ?? "(новый стек)"}
             count={targetAfter}
             emphasized
@@ -101,12 +102,12 @@ export function SplitDialog({
 }
 
 function SplitSide({
-  icon,
+  unitId,
   name,
   count,
   emphasized,
 }: {
-  icon: string;
+  unitId: string | null;
   name: string;
   count: number;
   emphasized?: boolean;
@@ -124,7 +125,7 @@ function SplitSide({
         borderRadius: 4,
       }}
     >
-      <span style={{ fontSize: 36 }}>{icon}</span>
+      {unitId ? <UnitIcon id={unitId} size={54} /> : <UiIcon name="unknown" size={54} />}
       <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{name}</span>
       <span style={{ fontSize: 18, color: "var(--gold)", marginTop: 4 }}>{count}</span>
     </div>

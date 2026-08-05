@@ -1,6 +1,7 @@
-import { ARTIFACTS, RARITY_COLOR, SLOT_ICON, SLOT_LABEL } from "../../game/data/artifacts";
+import { ARTIFACTS, RARITY_COLOR, SLOT_LABEL } from "../../game/data/artifacts";
 import type { ArtifactSlot, HeroArtifacts } from "../../game/types";
 import { ARTIFACT_SLOT_ORDER } from "../../game/types";
+import { ArtifactIcon, GameIcon, slotSprite } from "../gameArt";
 
 // Grid из 7 слотов экипировки. Цвет рамки зависит от rarity артефакта.
 // Выбор/действия — снаружи (HeroScreen / HeroMeetingScreen).
@@ -27,7 +28,7 @@ export function EquippedGrid({
             onClick={() => onSlotClick(slot)}
             title={def ? `${def.name} — ${def.description}` : `${SLOT_LABEL[slot]} (пусто)`}
           >
-            <span className="slot-icon">{def ? def.icon : SLOT_ICON[slot]}</span>
+            {def ? <ArtifactIcon id={def.id} size={36} /> : <GameIcon sprite={slotSprite(slot)} size={36} />}
             <span className="slot-label">{SLOT_LABEL[slot]}</span>
           </div>
         );

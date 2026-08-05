@@ -5,6 +5,7 @@
 import { UNITS } from "../../game/data/units";
 import type { BattleStack, BattleState } from "../../game/types";
 import { darken, lighten } from "../canvas/colors";
+import { drawSprite, unitSprite } from "../gameArt";
 import type { BattleVisual } from "./types";
 
 export function drawHpBar(
@@ -25,7 +26,7 @@ export function drawHpBar(
 }
 
 // Полный токен боевого стека: тень → круг с градиентом → обводка → подсветка
-// активного → HP-bar → эмодзи → бейдж с числом → flash урона.
+// активного → HP-bar → портрет → бейдж с числом → flash урона.
 // cx/cy — центр в пикселях канваса (после учёта sub-tile позиции и «выпада»).
 export function drawBattleStack(
   ctx: CanvasRenderingContext2D,
@@ -71,12 +72,7 @@ export function drawBattleStack(
   const effUnitHp = Math.max(1, unit.hp + sideBonus.hpBonus);
   const hpPct = Math.max(0, Math.min(1, s.hp / effUnitHp));
   drawHpBar(ctx, cx - 16, cy - 22, 32, 4, hpPct);
-  // Эмодзи.
-  ctx.font = "24px serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#fff";
-  ctx.fillText(unit.icon, cx, cy - 2);
+  drawSprite(ctx, unitSprite(unit.id), cx, cy - 2, 34);
   // Число существ.
   ctx.font = "bold 11px sans-serif";
   const txt = String(s.count);

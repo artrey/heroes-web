@@ -1,4 +1,5 @@
 import { useGame } from "../game/store";
+import { UiIcon } from "./gameArt";
 
 export function MainMenu() {
   const goToNewGame = useGame(s => s.goToNewGame);
@@ -12,7 +13,9 @@ export function MainMenu() {
       <div className="subtitle">~ браузерный прототип в духе HoMM3 / HotA ~</div>
       <div className="menu-buttons">
         <button onClick={goToNewGame}>Новая игра</button>
-        <button onClick={goToMultiplayer}>🌐 Мультиплеер</button>
+        <button onClick={goToMultiplayer}>
+          <UiIcon name="multiplayer" size={18} /> Мультиплеер
+        </button>
         <button disabled={!hasSave} onClick={() => useGame.setState({ phase: "adventure" })}>
           Продолжить
         </button>

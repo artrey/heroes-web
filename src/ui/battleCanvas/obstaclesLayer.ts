@@ -1,3 +1,4 @@
+import { drawSprite, uiSprite } from "../gameArt";
 import { cellCenter } from "./constants";
 import type { BattleRenderContext } from "./types";
 
@@ -12,10 +13,16 @@ export function drawObstaclesLayer(rc: BattleRenderContext): void {
     ctx.ellipse(cx, cy + 12, 18, 4, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
-    ctx.font = "28px serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#fff";
-    ctx.fillText(obs.icon, cx, cy);
+    const sprite =
+      obs.icon === "🌵"
+        ? uiSprite("cactus")
+        : obs.icon === "🍄"
+          ? uiSprite("mushroom")
+          : obs.icon === "🪵"
+            ? uiSprite("log")
+            : obs.icon === "🌳"
+              ? uiSprite("forest")
+              : uiSprite("rock");
+    drawSprite(ctx, sprite, cx, cy, 36);
   }
 }

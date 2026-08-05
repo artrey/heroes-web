@@ -1,5 +1,6 @@
 import { UNITS } from "../../game/data/units";
 import type { UnitDef, UnitStack } from "../../game/types";
+import { UnitIcon } from "../gameArt";
 
 // 7 слотов армии героя/гарнизона. Сам компонент только рендерит — выбор и
 // действия делает вызывающий (передаёт isSelected/onSlotClick). Контейнерный
@@ -40,7 +41,7 @@ export function ArmyGrid({
             onClick={ev => onSlotClick(slot, ev)}
             title={title}
           >
-            <span className="icon">{unit?.icon ?? "?"}</span>
+            {unit ? <UnitIcon id={unit.id} size={36} className="icon" /> : null}
             <span>{stack.count}</span>
           </div>
         );

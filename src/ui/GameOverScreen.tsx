@@ -1,4 +1,5 @@
 import { useGame } from "../game/store";
+import { UiIcon } from "./gameArt";
 
 export function GameOverScreen() {
   const winnerId = useGame(s => s.winnerId);
@@ -11,6 +12,7 @@ export function GameOverScreen() {
 
   return (
     <div className={`gameover ${!isHumanWinner ? "defeat" : ""}`}>
+      <UiIcon name={isHumanWinner ? "victory" : "defeat"} size={120} />
       <h1>{isHumanWinner ? "ПОБЕДА" : "ПОРАЖЕНИЕ"}</h1>
       <div style={{ color: "var(--text-dim)", marginBottom: 32 }}>
         {winner ? `Победитель: ${winner.name}` : "Все игроки погибли."}

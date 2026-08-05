@@ -1,4 +1,5 @@
 import { ARTIFACTS, RARITY_COLOR } from "../../game/data/artifacts";
+import { ArtifactIcon } from "../gameArt";
 
 // Список артефактов в рюкзаке. Пустой рюкзак рисует «Пусто»-плашку.
 export function BackpackGrid({
@@ -24,7 +25,7 @@ export function BackpackGrid({
             onClick={() => onSlotClick(idx)}
             title={`${def.name} — ${def.description}`}
           >
-            <span style={{ fontSize: 24 }}>{def.icon}</span>
+            <ArtifactIcon id={def.id} size={38} />
             <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{def.name}</span>
           </div>
         );

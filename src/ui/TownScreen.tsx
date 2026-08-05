@@ -1,14 +1,14 @@
 import { useState } from "react";
 
 import { FACTION_BUILDINGS, MAGE_GUILD_LEVEL } from "../game/data/buildings";
-import { FACTION_META } from "../game/data/factions";
 import { UNITS } from "../game/data/units";
 import { useGame } from "../game/store";
 import type { ArmySlotRef, ResourceBag } from "../game/types";
 import { findFirstEmptySlot } from "../game/utils/army";
 import { dailyIncomeFor } from "../game/utils/income";
-import { RESOURCE_ICONS, RESOURCE_NAMES } from "../game/utils/resources";
+import { RESOURCE_NAMES } from "../game/utils/resources";
 import { useMyPlayerId } from "../net/netStore";
+import { FactionIcon, ResourceIcon, UiIcon, UnitIcon } from "./gameArt";
 import { SplitDialog } from "./SplitDialog";
 import { BuildingsGrid } from "./town/BuildingsGrid";
 import { MageGuildModal } from "./town/MageGuildModal";
@@ -61,14 +61,14 @@ export function TownScreen() {
     <div className="town-screen">
       <div className="top-bar">
         <span className="day">
-          {FACTION_META[town.faction].icon} {town.name}
+          <FactionIcon faction={town.faction} size={28} /> {town.name}
         </span>
         <div className="res-bar">
           {(Object.keys(player.resources) as Array<keyof ResourceBag>).map(k => {
             const inc = dailyIncomeFor(useGame.getState(), player.id)[k];
             return (
               <div className="res-item" key={k} title={`${RESOURCE_NAMES[k]}${inc ? ` · +${inc}/день` : ""}`}>
-                <span>{RESOURCE_ICONS[k]}</span>
+                <ResourceIcon resource={k} size={20} />
                 <span>{player.resources[k]}</span>
                 {inc > 0 && <span style={{ color: "var(--good)", fontSize: 11, marginLeft: 2 }}>(+{inc})</span>}
               </div>
@@ -84,7 +84,7 @@ export function TownScreen() {
           <div className={`build-status ${town.builtToday ? "done" : "ready"}`}>
             {town.builtToday ? (
               <>
-                <span className="build-status-icon">🔒</span>
+                <UiIcon name="lock" size={42} className="build-status-icon" />
                 <div>
                   <div className="build-status-title">Сегодня вы уже построили здание</div>
                   <div className="build-status-sub">Следующая постройка станет доступна завтра.</div>
@@ -92,7 +92,7 @@ export function TownScreen() {
               </>
             ) : (
               <>
-                <span className="build-status-icon">🔨</span>
+                <UiIcon name="build" size={42} className="build-status-icon" />
                 <div>
                   <div className="build-status-title">Доступна постройка на сегодня</div>
                   <div className="build-status-sub">Выберите одно здание — на день будет израсходован лимит.</div>
@@ -164,7 +164,7 @@ export function TownScreen() {
                       : "Не ваш ход"
                   }
                 >
-                  <span className="icon">{u.icon}</span>
+                  <UnitIcon id={u.id} size={34} className="icon" />
                   <span>{stack.count}</span>
                 </div>
               );
@@ -175,7 +175,7 @@ export function TownScreen() {
             <>
               <h3 style={{ color: "var(--gold)", marginTop: 16 }}>Герой в городе</h3>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 28 }}>{heroHere.icon}</span>
+                <FactionIcon faction={heroHere.faction} size={42} />
                 <div>{heroHere.name}</div>
               </div>
               <div style={{ display: "flex", gap: 4 }}>
@@ -210,7 +210,7 @@ export function TownScreen() {
                       }}
                       title={canAct ? "Клик — в гарнизон · Shift+клик — разделить в армии героя" : "Не ваш ход"}
                     >
-                      <span className="icon">{u.icon}</span>
+                      <UnitIcon id={u.id} size={34} className="icon" />
                       <span>{stack.count}</span>
                     </div>
                   );
@@ -242,7 +242,7 @@ export function TownScreen() {
         <MageGuildModal
           level={town.mageGuildLevel}
           spellIds={town.learnedSpells}
-          heroHere={heroHere ? { name: heroHere.name, icon: heroHere.icon, knownSpells: heroHere.spells } : null}
+          heroHere={heroHere ? { name: heroHere.name, faction: heroHere.faction, knownSpells: heroHere.spells } : null}
           onClose={() => setOpenModal(null)}
         />
       )}

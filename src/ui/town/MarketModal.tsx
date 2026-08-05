@@ -2,7 +2,8 @@ import { useState } from "react";
 
 import { reverseRate } from "../../game/data/marketRates";
 import type { Resource, ResourceBag } from "../../game/types";
-import { RESOURCE_ICONS, RESOURCE_NAMES } from "../../game/utils/resources";
+import { RESOURCE_NAMES } from "../../game/utils/resources";
+import { ResourceIcon, UiIcon } from "../gameArt";
 
 const RESOURCE_LIST: Resource[] = ["gold", "wood", "ore", "mercury", "sulfur", "crystal", "gems"];
 
@@ -29,7 +30,9 @@ export function MarketModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 460 }}>
-        <h2 style={{ marginTop: 0, color: "var(--gold)" }}>🏪 Рынок</h2>
+        <h2 style={{ marginTop: 0, color: "var(--gold)" }}>
+          <UiIcon name="market" size={28} /> Рынок
+        </h2>
         <p style={{ color: "var(--text-dim)", marginTop: 0 }}>
           Обмен ресурсов. Курс зависит от типа: сырьё (дерево/руда) дешевле редкого (ртуть/сера/кристаллы/самоцветы).
         </p>
@@ -40,7 +43,7 @@ export function MarketModal({
             <select value={from} onChange={e => setFrom(e.target.value as Resource)} style={{ width: "100%" }}>
               {RESOURCE_LIST.map(r => (
                 <option key={r} value={r}>
-                  {RESOURCE_ICONS[r]} {RESOURCE_NAMES[r]} (есть {resources[r]})
+                  {RESOURCE_NAMES[r]} (есть {resources[r]})
                 </option>
               ))}
             </select>
@@ -50,7 +53,7 @@ export function MarketModal({
             <select value={to} onChange={e => setTo(e.target.value as Resource)} style={{ width: "100%" }}>
               {RESOURCE_LIST.map(r => (
                 <option key={r} value={r}>
-                  {RESOURCE_ICONS[r]} {RESOURCE_NAMES[r]}
+                  {RESOURCE_NAMES[r]}
                 </option>
               ))}
             </select>
@@ -69,7 +72,7 @@ export function MarketModal({
           />
           <button onClick={() => setQty(have)}>Всё</button>
           <div style={{ marginLeft: "auto", fontSize: 13, color: canDo ? "var(--good)" : "var(--text-dim)" }}>
-            → получите <b>{willGet}</b> {RESOURCE_ICONS[to]}
+            → получите <b>{willGet}</b> <ResourceIcon resource={to} size={20} />
           </div>
         </div>
 

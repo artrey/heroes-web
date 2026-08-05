@@ -1,5 +1,6 @@
 import { FACTION_META } from "../game/data/factions";
 import type { GameMap, Player } from "../game/types";
+import { FactionIcon, UiIcon } from "./gameArt";
 
 export function PlayersInfoModal({
   map,
@@ -27,7 +28,9 @@ export function PlayersInfoModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 460, maxWidth: 560 }}>
-        <h2 style={{ marginTop: 0, color: "var(--gold)" }}>🗺 Карта и игроки</h2>
+        <h2 style={{ marginTop: 0, color: "var(--gold)" }}>
+          <UiIcon name="map" size={28} /> Карта и игроки
+        </h2>
         <div style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--text-dim)", marginBottom: 12 }}>
           <span>
             Размер:{" "}
@@ -77,7 +80,7 @@ export function PlayersInfoModal({
                     boxShadow: "0 0 0 1px rgba(0,0,0,0.5)",
                   }}
                 />
-                <span style={{ fontSize: 18 }}>{fac.icon}</span>
+                <FactionIcon faction={p.faction} size={34} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: "bold", textDecoration: p.defeated ? "line-through" : "none" }}>
                     {p.name}
@@ -90,7 +93,9 @@ export function PlayersInfoModal({
                     {fac.name} · {p.isHuman ? "Человек" : "ИИ"}
                     {isMe && (
                       <>
-                        {" · "}🛡 {p.heroIds.length} · 🏰 {p.townIds.length}
+                        {" · "}
+                        <UiIcon name="player" size={14} /> {p.heroIds.length} · <UiIcon name="town" size={14} />{" "}
+                        {p.townIds.length}
                       </>
                     )}
                   </div>

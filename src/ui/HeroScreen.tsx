@@ -15,6 +15,7 @@ import {
 } from "../game/utils/heroBonus";
 import { xpToNextLevel } from "../game/utils/leveling";
 import { useMyPlayerId } from "../net/netStore";
+import { FactionIcon, SpellIcon, UiIcon } from "./gameArt";
 import { ArmyGrid } from "./hero/ArmyGrid";
 import { BackpackGrid } from "./hero/BackpackGrid";
 import { EquippedGrid } from "./hero/EquippedGrid";
@@ -120,7 +121,7 @@ export function HeroScreen() {
     <div className="hero-screen">
       <div className="top-bar">
         <span className="day" style={{ color: "var(--gold)" }}>
-          {hero.icon} {hero.name}
+          <FactionIcon faction={hero.faction} size={28} /> {hero.name}
         </span>
         <button style={{ marginLeft: "auto" }} onClick={close}>
           ← На карту
@@ -129,42 +130,58 @@ export function HeroScreen() {
 
       <div className="hero-body">
         <div className="hero-side">
-          <div style={{ fontSize: 96, textAlign: "center", marginBottom: 12 }}>{hero.icon}</div>
+          <div style={{ textAlign: "center", marginBottom: 12 }}>
+            <FactionIcon faction={hero.faction} size={120} />
+          </div>
           <h2 style={{ color: "var(--gold)", textAlign: "center", margin: "0 0 4px" }}>{hero.name}</h2>
           <div style={{ textAlign: "center", color: "var(--text-dim)", fontSize: 13 }}>
             {FACTION_META[hero.faction].name} · Уровень {hero.level}
           </div>
           <div style={{ marginTop: 14, fontSize: 13 }}>
             <div className="stat-row">
-              <span>⚡ Очки движения</span>
+              <span>
+                <UiIcon name="movement" size={18} /> Очки движения
+              </span>
               <span>
                 {hero.movePoints} / {effMaxMP} ОД
               </span>
             </div>
             <div className="stat-row">
-              <span>⭐ Опыт</span>
+              <span>
+                <UiIcon name="victory" size={18} /> Опыт
+              </span>
               <span>
                 {hero.xp} (до ур. {hero.level + 1}: {xpToNextLevel(hero.xp)})
               </span>
             </div>
             <div className="stat-row" title="Сумма: уровни + артефакты">
-              <span>⚔️ Атака</span>
+              <span>
+                <UiIcon name="attack" size={18} /> Атака
+              </span>
               <span>{bonus.attack}</span>
             </div>
             <div className="stat-row" title="Сумма: уровни + артефакты">
-              <span>🛡️ Защита</span>
+              <span>
+                <UiIcon name="defense" size={18} /> Защита
+              </span>
               <span>{bonus.defense}</span>
             </div>
             <div className="stat-row" title="База + бонусы от артефактов">
-              <span>🔮 Сила магии</span>
+              <span>
+                <UiIcon name="spellPower" size={18} /> Сила магии
+              </span>
               <span>{effSpellPower}</span>
             </div>
             <div className="stat-row" title="База + бонусы от артефактов">
-              <span>📚 Знания</span>
+              <span>
+                <UiIcon name="knowledge" size={18} /> Знания
+              </span>
               <span>{effKnowledge}</span>
             </div>
             <div className="stat-row">
-              <span>💧 Мана</span>
+              <span>
+                <UiIcon name="mana" size={18} /> Мана
+              </span>
               <span>
                 {hero.mana} / {effMaxMana}
               </span>
@@ -205,10 +222,10 @@ export function HeroScreen() {
                   >
                     <span style={{ color: "var(--text-dim)" }}>База:</span>
                   </div>
-                  <BonusRow label="⚔️ Атака" value={`${base.attack}`} />
-                  <BonusRow label="🛡️ Защита" value={`${base.defense}`} />
-                  <BonusRow label="🔮 Сила магии" value={`${base.spellPower}`} />
-                  <BonusRow label="📚 Знания" value={`${base.knowledge}`} />
+                  <BonusRow label="Атака" value={`${base.attack}`} />
+                  <BonusRow label="Защита" value={`${base.defense}`} />
+                  <BonusRow label="Сила магии" value={`${base.spellPower}`} />
+                  <BonusRow label="Знания" value={`${base.knowledge}`} />
                   <div
                     className="stat-row"
                     style={{ borderTop: "1px solid var(--border)", paddingTop: 8, marginTop: 8 }}
@@ -217,10 +234,10 @@ export function HeroScreen() {
                   </div>
                   {hasLvl ? (
                     <>
-                      {lvl.attack ? <BonusRow label="⚔️ Атака" value={`+${lvl.attack}`} /> : null}
-                      {lvl.defense ? <BonusRow label="🛡️ Защита" value={`+${lvl.defense}`} /> : null}
-                      {lvl.spellPower ? <BonusRow label="🔮 Сила магии" value={`+${lvl.spellPower}`} /> : null}
-                      {lvl.knowledge ? <BonusRow label="📚 Знания" value={`+${lvl.knowledge}`} /> : null}
+                      {lvl.attack ? <BonusRow label="Атака" value={`+${lvl.attack}`} /> : null}
+                      {lvl.defense ? <BonusRow label="Защита" value={`+${lvl.defense}`} /> : null}
+                      {lvl.spellPower ? <BonusRow label="Сила магии" value={`+${lvl.spellPower}`} /> : null}
+                      {lvl.knowledge ? <BonusRow label="Знания" value={`+${lvl.knowledge}`} /> : null}
                     </>
                   ) : (
                     <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>—</div>
@@ -233,14 +250,14 @@ export function HeroScreen() {
                   </div>
                   {gearTotal > 0 ? (
                     <>
-                      {gear.attack ? <BonusRow label="⚔️ Атака" value={`+${gear.attack}`} /> : null}
-                      {gear.defense ? <BonusRow label="🛡️ Защита" value={`+${gear.defense}`} /> : null}
-                      {gear.speed ? <BonusRow label="🏃 Скорость" value={`+${gear.speed}`} /> : null}
-                      {gear.hpBonus ? <BonusRow label="❤️ HP" value={`+${gear.hpBonus}`} /> : null}
-                      {gear.movement ? <BonusRow label="🥾 Доп. ОД" value={`+${gear.movement}`} /> : null}
-                      {gear.spellPower ? <BonusRow label="🔮 Сила магии" value={`+${gear.spellPower}`} /> : null}
-                      {gear.knowledge ? <BonusRow label="📚 Знания" value={`+${gear.knowledge}`} /> : null}
-                      {gear.manaMult ? <BonusRow label="💧 Макс. мана" value={`+${gear.manaMult}%`} /> : null}
+                      {gear.attack ? <BonusRow label="Атака" value={`+${gear.attack}`} /> : null}
+                      {gear.defense ? <BonusRow label="Защита" value={`+${gear.defense}`} /> : null}
+                      {gear.speed ? <BonusRow label="Скорость" value={`+${gear.speed}`} /> : null}
+                      {gear.hpBonus ? <BonusRow label="HP" value={`+${gear.hpBonus}`} /> : null}
+                      {gear.movement ? <BonusRow label="Доп. ОД" value={`+${gear.movement}`} /> : null}
+                      {gear.spellPower ? <BonusRow label="Сила магии" value={`+${gear.spellPower}`} /> : null}
+                      {gear.knowledge ? <BonusRow label="Знания" value={`+${gear.knowledge}`} /> : null}
+                      {gear.manaMult ? <BonusRow label="Макс. мана" value={`+${gear.manaMult}%`} /> : null}
                     </>
                   ) : (
                     <div style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>—</div>
@@ -294,9 +311,11 @@ export function HeroScreen() {
               if (!sp) return null;
               return (
                 <div key={sid} className="spell-slot" title={`${sp.name} (ур. ${sp.level}) — ${sp.description}`}>
-                  <span style={{ fontSize: 22 }}>{sp.icon}</span>
+                  <SpellIcon id={sp.id} size={38} />
                   <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{sp.name}</span>
-                  <span style={{ fontSize: 10, color: "var(--accent)" }}>💧 {sp.manaCost}</span>
+                  <span style={{ fontSize: 10, color: "var(--accent)" }}>
+                    <UiIcon name="mana" size={13} /> {sp.manaCost}
+                  </span>
                 </div>
               );
             })}

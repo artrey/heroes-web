@@ -24,6 +24,7 @@ import { useNet } from "../net/netStore";
 import { AnimSpeedToggle } from "./AnimSpeedToggle";
 import { cellCenter, FIELD_H, FIELD_PAD, FIELD_W, HEX_H, HEX_W } from "./battleCanvas/constants";
 import { drawBattle } from "./battleCanvas/drawBattle";
+import { SpellIcon, subscribeToSpriteLoads, UiIcon, UnitIcon } from "./gameArt";
 import { useAnimationLoop } from "./hooks/useAnimationLoop";
 import { ANIM_SPEED_SCALE, useSettings } from "./settingsStore";
 
@@ -63,6 +64,9 @@ export function BattleScreen() {
   // Открытая модалка спеллбука и режим выбора цели для заклинания.
   const [showSpells, setShowSpells] = useState(false);
   const [castSpellId, setCastSpellId] = useState<string | null>(null);
+  const [spriteRevision, setSpriteRevision] = useState(0);
+
+  useEffect(() => subscribeToSpriteLoads(() => setSpriteRevision(revision => revision + 1)), []);
 
   const animSpeed = useSettings(s => s.animSpeed);
 
@@ -303,7 +307,7 @@ export function BattleScreen() {
     const ctx = canvasRef.current.getContext("2d")!;
     drawBattle(ctx, battle, hoverCell, computeStackVisual());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [battle, hoverCell, animTick]);
+  }, [battle, hoverCell, animTick, spriteRevision]);
 
   // Автоскролл лога боя при появлении новых записей.
   useEffect(() => {
@@ -424,7 +428,8 @@ export function BattleScreen() {
       <div className="battle-controls">
         {winner ? (
           <div style={{ fontSize: 18, color: winner === "attacker" ? "var(--good)" : "var(--danger)" }}>
-            {winner === "attacker" ? "🏆 Победа!" : "💀 Поражение!"}
+            <UiIcon name={winner === "attacker" ? "victory" : "defeat"} size={26} />{" "}
+            {winner === "attacker" ? "Победа!" : "Поражение!"}
           </div>
         ) : act ? (
           <>
@@ -436,7 +441,7 @@ export function BattleScreen() {
                 if (m.spells.length === 0) return null;
                 return (
                   <span style={{ marginLeft: 12, color: "var(--text-dim)" }}>
-                    💧 {m.mana} · 🔮 {m.spellPower}
+                    <UiIcon name="mana" size={16} /> {m.mana} · <UiIcon name="spellPower" size={16} /> {m.spellPower}
                   </span>
                 );
               })()}
@@ -459,7 +464,7 @@ export function BattleScreen() {
                   onClick={() => setShowSpells(true)}
                   title={canCast ? "Открыть спеллбук" : "В этом раунде уже кастовали"}
                 >
-                  📖 Заклинание
+                  <UiIcon name="spellbook" size={18} /> Заклинание
                 </button>
               );
             })()}
@@ -506,9 +511,12 @@ function SpellbookModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 460 }}>
-        <h2 style={{ marginTop: 0, color: "var(--gold)" }}>📖 Книга заклинаний</h2>
+        <h2 style={{ marginTop: 0, color: "var(--gold)" }}>
+          <UiIcon name="spellbook" size={28} /> Книга заклинаний
+        </h2>
         <div style={{ color: "var(--text-dim)", fontSize: 13, marginBottom: 8 }}>
-          💧 Мана: {magic.mana} · 🔮 Сила: {magic.spellPower}. 1 каст в раунд.
+          <UiIcon name="mana" size={16} /> Мана: {magic.mana} · <UiIcon name="spellPower" size={16} /> Сила:{" "}
+          {magic.spellPower}. 1 каст в раунд.
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
           {magic.spells.map(id => {
@@ -531,10 +539,10 @@ function SpellbookModal({
                 }}
               >
                 <span style={{ fontSize: 18 }}>
-                  {sp.icon} {sp.name}
+                  <SpellIcon id={sp.id} size={32} /> {sp.name}
                 </span>
                 <span style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                  ур. {sp.level} · 💧 {sp.manaCost}
+                  ур. {sp.level} · <UiIcon name="mana" size={14} /> {sp.manaCost}
                 </span>
                 <span style={{ fontSize: 11 }}>{sp.description}</span>
               </button>
@@ -598,7 +606,7 @@ function BattleTooltip({
   return (
     <div className="battle-tooltip" style={{ left, top }}>
       <div className="tt-title">
-        {def.icon} {def.name} × {stack.count}
+        <UnitIcon id={def.id} size={30} /> {def.name} × {stack.count}
       </div>
       <div className="tt-sub">
         HP: {topUnitHp} / {topUnitMaxHp}
@@ -612,7 +620,7 @@ function BattleTooltip({
       </div>
       {castSpellId && spellDef && (
         <div className="tt-pred">
-          {spellDef.icon} {spellDef.name}:{" "}
+          <SpellIcon id={spellDef.id} size={22} /> {spellDef.name}:{" "}
           {spellPreview == null ? (
             <span style={{ color: "var(--danger)" }}>недопустимая цель</span>
           ) : spellPreview.kind === "damage" ? (
@@ -630,7 +638,7 @@ function BattleTooltip({
       )}
       {!castSpellId && physPreview && (
         <div className="tt-pred">
-          {physPreview.ranged ? "⏵ Выстрел: " : "⚔️ Удар: "}
+          {physPreview.ranged ? "Выстрел: " : "Удар: "}
           {physPreview.minDmg === physPreview.maxDmg
             ? physPreview.minDmg
             : `${physPreview.minDmg}–${physPreview.maxDmg}`}{" "}

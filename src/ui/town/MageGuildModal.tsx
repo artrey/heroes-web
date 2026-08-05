@@ -1,4 +1,6 @@
 import { getSpell } from "../../game/data/spells";
+import type { Faction } from "../../game/types";
+import { FactionIcon, SpellIcon, UiIcon } from "../gameArt";
 
 // Гильдия магов — каталог доступных заклинаний по уровням. Сам каст не делается
 // отсюда: герой, заходящий в город, автоматически их изучит (applyMageGuildVisit
@@ -11,7 +13,7 @@ export function MageGuildModal({
 }: {
   level: number;
   spellIds: string[];
-  heroHere: { name: string; icon: string; knownSpells: string[] } | null;
+  heroHere: { name: string; faction: Faction; knownSpells: string[] } | null;
   onClose: () => void;
 }) {
   // Группируем заклинания по уровню — порядок строк всегда 1 → 2 → 3.
@@ -27,15 +29,17 @@ export function MageGuildModal({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()} style={{ minWidth: 520 }}>
-        <h2 style={{ marginTop: 0, color: "var(--gold)" }}>📖 Гильдия магов — уровень {level}</h2>
+        <h2 style={{ marginTop: 0, color: "var(--gold)" }}>
+          <UiIcon name="mageGuild" size={28} /> Гильдия магов — уровень {level}
+        </h2>
         <p style={{ color: "var(--text-dim)", marginTop: 0 }}>
           Здесь обучают магии. Герой, заходящий в город, автоматически изучает все доступные заклинания и пополняет
           ману.
         </p>
         {heroHere && (
           <div style={{ marginBottom: 8, fontSize: 13 }}>
-            <span style={{ fontSize: 22, marginRight: 6 }}>{heroHere.icon}</span>
-            <b>{heroHere.name}</b> сейчас в городе и автоматически изучает все заклинания.
+            <FactionIcon faction={heroHere.faction} size={30} /> <b>{heroHere.name}</b> сейчас в городе и автоматически
+            изучает все заклинания.
           </div>
         )}
         {[1, 2, 3].map(lvl => {
@@ -61,11 +65,11 @@ export function MageGuildModal({
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 22 }}>{sp.icon}</span>
+                        <SpellIcon id={sp.id} size={34} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: "bold", fontSize: 13 }}>{sp.name}</div>
                           <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-                            💧 {sp.manaCost} · {has ? "уже изучено" : "будет изучено"}
+                            <UiIcon name="mana" size={14} /> {sp.manaCost} · {has ? "уже изучено" : "будет изучено"}
                           </div>
                         </div>
                       </div>

@@ -12,6 +12,7 @@ import {
   getHeroBonus,
 } from "../game/utils/heroBonus";
 import { useMyPlayerId } from "../net/netStore";
+import { FactionIcon, UiIcon } from "./gameArt";
 import { ArmyGrid } from "./hero/ArmyGrid";
 import { BackpackGrid } from "./hero/BackpackGrid";
 import { EquippedGrid } from "./hero/EquippedGrid";
@@ -151,7 +152,7 @@ export function HeroMeetingScreen() {
     <div className="hero-meeting">
       <div className="top-bar">
         <span className="day" style={{ color: "var(--gold)" }}>
-          🤝 Встреча героев
+          <UiIcon name="meeting" size={28} /> Встреча героев
         </span>
         <button style={{ marginLeft: "auto" }} onClick={close}>
           ← Закрыть
@@ -173,28 +174,28 @@ export function HeroMeetingScreen() {
             onClick={() => transferAllArmy(a.id, b.id)}
             title={canAct ? "Передать всю армию правому герою" : "Не ваш ход"}
           >
-            👥 ⇒
+            <UiIcon name="party" size={22} /> ⇒
           </button>
           <button
             disabled={!canAct || b.army.length === 0}
             onClick={() => transferAllArmy(b.id, a.id)}
             title={canAct ? "Передать всю армию левому герою" : "Не ваш ход"}
           >
-            ⇐ 👥
+            ⇐ <UiIcon name="party" size={22} />
           </button>
           <button
             disabled={!canAct || (Object.keys(a.artifacts.equipped).length === 0 && a.artifacts.backpack.length === 0)}
             onClick={() => transferAllArtifacts(a.id, b.id)}
             title={canAct ? "Передать все артефакты правому герою (в рюкзак)" : "Не ваш ход"}
           >
-            💼 ⇒
+            <UiIcon name="backpack" size={22} /> ⇒
           </button>
           <button
             disabled={!canAct || (Object.keys(b.artifacts.equipped).length === 0 && b.artifacts.backpack.length === 0)}
             onClick={() => transferAllArtifacts(b.id, a.id)}
             title={canAct ? "Передать все артефакты левому герою (в рюкзак)" : "Не ваш ход"}
           >
-            ⇐ 💼
+            ⇐ <UiIcon name="backpack" size={22} />
           </button>
         </div>
         <HeroPanel
@@ -275,22 +276,31 @@ function HeroPanel({
   return (
     <div className="meeting-hero">
       <div className="meeting-hero-header">
-        <span style={{ fontSize: 48 }}>{hero.icon}</span>
+        <FactionIcon faction={hero.faction} size={64} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 20, color: "var(--gold)" }}>{hero.name}</div>
           <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-            Уровень {hero.level} · {FACTION_META[hero.faction].name} · ⚡ {hero.movePoints} ОД
+            Уровень {hero.level} · {FACTION_META[hero.faction].name} · <UiIcon name="movement" size={14} />{" "}
+            {hero.movePoints} ОД
           </div>
         </div>
       </div>
 
       <div className="meeting-stats" title="Сумма с учётом уровней и артефактов">
-        <span>⚔️ {bonus.attack}</span>
-        <span>🛡️ {bonus.defense}</span>
-        <span>🔮 {sp}</span>
-        <span>📚 {know}</span>
         <span>
-          💧 {hero.mana}/{maxMana}
+          <UiIcon name="attack" size={16} /> {bonus.attack}
+        </span>
+        <span>
+          <UiIcon name="defense" size={16} /> {bonus.defense}
+        </span>
+        <span>
+          <UiIcon name="spellPower" size={16} /> {sp}
+        </span>
+        <span>
+          <UiIcon name="knowledge" size={16} /> {know}
+        </span>
+        <span>
+          <UiIcon name="mana" size={16} /> {hero.mana}/{maxMana}
         </span>
       </div>
       <BonusBreakdown base={base} lvl={lvl} gear={gear} />
@@ -339,21 +349,26 @@ function BonusBreakdown({
     manaMult: number;
   };
 }) {
-  const baseParts = [`⚔️ ${base.attack}`, `🛡️ ${base.defense}`, `🔮 ${base.spellPower}`, `📚 ${base.knowledge}`];
+  const baseParts = [
+    `Атк ${base.attack}`,
+    `Защ ${base.defense}`,
+    `Магия ${base.spellPower}`,
+    `Знания ${base.knowledge}`,
+  ];
   const lvlParts: string[] = [];
-  if (lvl.attack) lvlParts.push(`⚔️ +${lvl.attack}`);
-  if (lvl.defense) lvlParts.push(`🛡️ +${lvl.defense}`);
-  if (lvl.spellPower) lvlParts.push(`🔮 +${lvl.spellPower}`);
-  if (lvl.knowledge) lvlParts.push(`📚 +${lvl.knowledge}`);
+  if (lvl.attack) lvlParts.push(`Атк +${lvl.attack}`);
+  if (lvl.defense) lvlParts.push(`Защ +${lvl.defense}`);
+  if (lvl.spellPower) lvlParts.push(`Магия +${lvl.spellPower}`);
+  if (lvl.knowledge) lvlParts.push(`Знания +${lvl.knowledge}`);
   const gearParts: string[] = [];
-  if (gear.attack) gearParts.push(`⚔️ +${gear.attack}`);
-  if (gear.defense) gearParts.push(`🛡️ +${gear.defense}`);
-  if (gear.speed) gearParts.push(`🏃 +${gear.speed}`);
-  if (gear.hpBonus) gearParts.push(`❤️ +${gear.hpBonus}`);
-  if (gear.movement) gearParts.push(`🥾 +${gear.movement}`);
-  if (gear.spellPower) gearParts.push(`🔮 +${gear.spellPower}`);
-  if (gear.knowledge) gearParts.push(`📚 +${gear.knowledge}`);
-  if (gear.manaMult) gearParts.push(`💧 +${gear.manaMult}%`);
+  if (gear.attack) gearParts.push(`Атк +${gear.attack}`);
+  if (gear.defense) gearParts.push(`Защ +${gear.defense}`);
+  if (gear.speed) gearParts.push(`Скорость +${gear.speed}`);
+  if (gear.hpBonus) gearParts.push(`HP +${gear.hpBonus}`);
+  if (gear.movement) gearParts.push(`ОД +${gear.movement}`);
+  if (gear.spellPower) gearParts.push(`Магия +${gear.spellPower}`);
+  if (gear.knowledge) gearParts.push(`Знания +${gear.knowledge}`);
+  if (gear.manaMult) gearParts.push(`Мана +${gear.manaMult}%`);
   return (
     <div className="meeting-bonus-breakdown">
       <div>

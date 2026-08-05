@@ -1,6 +1,7 @@
 import type { Coord } from "../../game/types";
+import { drawSprite, factionSprite } from "../gameArt";
 import { TILE_SIZE } from "./constants";
-import { drawEmoji, drawHeroToken } from "./tokens";
+import { drawHeroToken } from "./tokens";
 import type { RenderContext } from "./types";
 
 // Слой героев. Анимированному герою рисуем по интерполированной (sub-tile)
@@ -22,6 +23,6 @@ export function drawHeroesLayer(
     const cx = sx + TILE_SIZE / 2;
     const cy = sy + TILE_SIZE / 2;
     drawHeroToken(ctx, cx, cy, color, h.id === selectedHeroId);
-    drawEmoji(ctx, h.icon, cx, cy, 22);
+    drawSprite(ctx, factionSprite(h.faction), cx, cy, 26);
   }
 }

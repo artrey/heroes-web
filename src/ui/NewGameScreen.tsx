@@ -5,9 +5,10 @@ import { FACTION_LIST, FACTION_META } from "../game/data/factions";
 import { CUSTOM_SIZE_MAX, CUSTOM_SIZE_MIN, CUSTOM_TEMPLATE_ID, TEMPLATES } from "../game/data/templates";
 import { useGame } from "../game/store";
 import type { Difficulty, Faction } from "../game/types";
+import { FactionIcon, UiIcon } from "./gameArt";
 
 const DIFFICULTY_ORDER: Difficulty[] = ["easy", "normal", "hard"];
-const DIFFICULTY_ICON: Record<Difficulty, string> = { easy: "🟢", normal: "🟡", hard: "🔴" };
+const DIFFICULTY_ICON = { easy: "luck", normal: "defense", hard: "defeat" } as const;
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -64,7 +65,7 @@ export function NewGameScreen() {
             const meta = FACTION_META[f];
             return (
               <div key={f} className={`faction-card ${faction === f ? "selected" : ""}`} onClick={() => setFaction(f)}>
-                <span className="emoji">{meta.icon}</span>
+                <FactionIcon faction={f} size={72} className="faction-art" />
                 <div>{meta.name}</div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>{meta.description}</div>
               </div>
@@ -84,7 +85,7 @@ export function NewGameScreen() {
                 className={`faction-card ${difficulty === d ? "selected" : ""}`}
                 onClick={() => setDifficulty(d)}
               >
-                <span className="emoji">{DIFFICULTY_ICON[d]}</span>
+                <UiIcon name={DIFFICULTY_ICON[d]} size={56} className="difficulty-art" />
                 <div>{p.label}</div>
                 <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 4 }}>{p.description}</div>
               </div>
@@ -143,7 +144,9 @@ export function NewGameScreen() {
         <div className="form-row">
           <label>Seed карты:</label>
           <input type="number" value={seed} onChange={e => setSeed(+e.target.value)} />
-          <button onClick={() => setSeed(Math.floor(Math.random() * 0xfffffff))}>🎲</button>
+          <button aria-label="Случайный seed" onClick={() => setSeed(Math.floor(Math.random() * 0xfffffff))}>
+            <UiIcon name="dice" size={20} />
+          </button>
         </div>
       </div>
 

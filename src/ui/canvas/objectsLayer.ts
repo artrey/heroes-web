@@ -1,6 +1,6 @@
-import { RESOURCE_ICONS } from "../../game/utils/resources";
+import { artifactSprite, drawSprite, factionSprite, resourceSprite, uiSprite, unitSprite } from "../gameArt";
 import { TILE_SIZE } from "./constants";
-import { drawBuildingPlaque, drawBuiltTodayBadge, drawEmoji, drawObjectShadow, drawTownPlaque } from "./tokens";
+import { drawBuildingPlaque, drawBuiltTodayBadge, drawObjectShadow, drawTownPlaque } from "./tokens";
 import type { RenderContext } from "./types";
 
 // Слой объектов карты. Рисует ровно один объект на итерации (3×2-плитка замка —
@@ -26,7 +26,7 @@ export function drawObjectsLayer(rc: RenderContext): void {
         const w = 3 * TILE_SIZE;
         const h = 2 * TILE_SIZE;
         drawTownPlaque(ctx, topX, topY, w, h, ownerColor);
-        drawEmoji(ctx, obj.icon, topX + w / 2, topY + h / 2 - 2, 48);
+        if (tw) drawSprite(ctx, factionSprite(tw.faction), topX + w / 2, topY + h / 2 - 2, 52);
         if (tw?.builtToday) drawBuiltTodayBadge(ctx, topX + w - TILE_SIZE, topY);
         break;
       }
@@ -36,22 +36,37 @@ export function drawObjectsLayer(rc: RenderContext): void {
         } else {
           drawObjectShadow(ctx, cx, cy);
         }
-        drawEmoji(ctx, obj.icon, cx, cy, 22);
+        drawSprite(ctx, resourceSprite(obj.mineResource), cx, cy, 26);
         break;
       }
       case "resource": {
-        // Берём текущую иконку из общей таблицы — старые сейвы могут хранить устаревший emoji.
         drawObjectShadow(ctx, cx, cy);
-        drawEmoji(ctx, RESOURCE_ICONS[obj.resource], cx, cy, 22);
+        drawSprite(ctx, resourceSprite(obj.resource), cx, cy, 26);
         break;
       }
-      case "monster":
-      case "chest":
-      case "artifact":
-      case "tree":
+      case "monster": {
+        drawObjectShadow(ctx, cx, cy);
+        drawSprite(ctx, unitSprite(obj.unitId), cx, cy, 27);
+        break;
+      }
+      case "artifact": {
+        drawObjectShadow(ctx, cx, cy);
+        drawSprite(ctx, artifactSprite(obj.artifactId), cx, cy, 27);
+        break;
+      }
+      case "chest": {
+        drawObjectShadow(ctx, cx, cy);
+        drawSprite(ctx, uiSprite("treasure"), cx, cy, 27);
+        break;
+      }
+      case "tree": {
+        drawObjectShadow(ctx, cx, cy);
+        drawSprite(ctx, uiSprite("forest"), cx, cy, 27);
+        break;
+      }
       case "mountain": {
         drawObjectShadow(ctx, cx, cy);
-        drawEmoji(ctx, obj.icon, cx, cy, 22);
+        drawSprite(ctx, uiSprite("mountain"), cx, cy, 27);
         break;
       }
     }

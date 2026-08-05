@@ -1,6 +1,7 @@
 import { UNITS } from "../../game/data/units";
 import type { BuildingDef, Player, ResourceBag, Town } from "../../game/types";
-import { canAfford, RESOURCE_ICONS } from "../../game/utils/resources";
+import { canAfford } from "../../game/utils/resources";
+import { ResourceIcon, UnitIcon } from "../gameArt";
 
 // Карточка найма юнита из конкретного жилища. Содержит статы юнита, цену, прирост
 // (с учётом форта), кнопки ×1 и ×N (всех доступных).
@@ -26,7 +27,7 @@ export function RecruitCard({
   return (
     <div className="recruit-card">
       <div className="row">
-        <span className="icon">{unit.icon}</span>
+        <UnitIcon id={unit.id} size={48} className="icon" />
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: "bold" }}>
             {unit.name}{" "}
@@ -40,7 +41,7 @@ export function RecruitCard({
           <div style={{ fontSize: 11 }}>
             {Object.entries(unit.cost).map(([k, v]) => (
               <span key={k} style={{ marginRight: 6 }}>
-                {RESOURCE_ICONS[k as keyof ResourceBag]} {v}
+                <ResourceIcon resource={k as keyof ResourceBag} size={16} /> {v}
               </span>
             ))}
           </div>

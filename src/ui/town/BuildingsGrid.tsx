@@ -1,6 +1,7 @@
 import { FACTION_BUILDINGS, getBuilding, MAGE_GUILD_LEVEL } from "../../game/data/buildings";
 import type { BuildingDef, Player, ResourceBag, Town } from "../../game/types";
-import { canAfford, RESOURCE_ICONS } from "../../game/utils/resources";
+import { canAfford } from "../../game/utils/resources";
+import { ResourceIcon, UiIcon, UnitIcon } from "../gameArt";
 
 // Сетка карточек построек города. Каждая карточка показывает статус (построено /
 // требования / нет ресурсов / сегодня уже строили / можно). Клик отдаётся
@@ -66,16 +67,30 @@ function BuildingCard({
       }
     >
       <div className="bc-row1">
-        <span className="icon">{def.icon}</span>
+        {def.produces ? (
+          <UnitIcon id={def.produces} size={42} className="icon" />
+        ) : (
+          <UiIcon
+            name={def.id === "tavern" ? "tavern" : def.id === "marketplace" ? "market" : "town"}
+            size={42}
+            className="icon"
+          />
+        )}
         <span className="bc-status">
           {built ? (
             <span style={{ color: "var(--good)" }}>✓ построено</span>
           ) : !prereqsOk ? (
-            <span style={{ color: "var(--text-dim)" }}>🔒 требования</span>
+            <span style={{ color: "var(--text-dim)" }}>
+              <UiIcon name="lock" size={15} /> требования
+            </span>
           ) : !affordable ? (
-            <span style={{ color: "var(--danger)" }}>💰 нет ресурсов</span>
+            <span style={{ color: "var(--danger)" }}>
+              <UiIcon name="treasury" size={15} /> нет ресурсов
+            </span>
           ) : lockedByDay ? (
-            <span style={{ color: "var(--danger)" }}>🔒 сегодня</span>
+            <span style={{ color: "var(--danger)" }}>
+              <UiIcon name="lock" size={15} /> сегодня
+            </span>
           ) : (
             <span style={{ color: "var(--good)" }}>можно построить</span>
           )}
@@ -92,7 +107,7 @@ function BuildingCard({
         <div className="cost">
           {Object.entries(def.cost).map(([k, v]) => (
             <span key={k}>
-              {RESOURCE_ICONS[k as keyof ResourceBag]} {v}
+              <ResourceIcon resource={k as keyof ResourceBag} size={16} /> {v}
             </span>
           ))}
         </div>

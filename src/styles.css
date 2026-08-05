@@ -15,6 +15,32 @@
   box-sizing: border-box;
 }
 
+.game-icon {
+  display: inline-block;
+  position: relative;
+  overflow: hidden;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  flex: 0 0 var(--icon-size);
+  vertical-align: -0.22em;
+  background: transparent;
+  border-radius: 2px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.65));
+}
+
+.game-icon > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.game-icon.round {
+  border-radius: 50%;
+}
+
 html,
 body,
 #root {
@@ -229,10 +255,10 @@ select {
 .faction-card.selected {
   border-color: var(--gold);
 }
-.faction-card .emoji {
-  font-size: 48px;
+.faction-card .faction-art,
+.faction-card .difficulty-art {
   display: block;
-  margin-bottom: 6px;
+  margin: 0 auto 10px;
 }
 
 .new-game .footer {
@@ -264,16 +290,21 @@ select {
   display: flex;
   align-items: center;
   padding: 0 16px;
-  gap: 16px;
+  gap: 8px;
   font-size: 13px;
 }
 .top-bar .day {
   color: var(--gold);
   font-weight: bold;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .top-bar .res-bar {
   display: flex;
-  gap: 14px;
+  gap: 6px;
   margin-left: auto;
 }
 .top-bar .res-item {
@@ -281,9 +312,39 @@ select {
   align-items: center;
   gap: 4px;
   background: var(--bg-2);
-  padding: 4px 10px;
+  padding: 3px 6px;
   border-radius: 3px;
   border: 1px solid var(--border);
+}
+
+@media (max-width: 1000px) {
+  .top-bar {
+    padding: 0 6px;
+    gap: 4px;
+    font-size: 11px;
+  }
+
+  .top-bar .day {
+    font-size: 11px;
+  }
+
+  .top-bar .res-bar {
+    gap: 3px;
+  }
+
+  .top-bar .res-item {
+    gap: 2px;
+    padding: 2px 4px;
+  }
+
+  .top-bar .res-item .game-icon {
+    --icon-size: 16px !important;
+  }
+
+  .top-bar button {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
 }
 
 .map-area {
